@@ -16,9 +16,6 @@ import System.IO
 
 data Result = SyntaxError | Invalid DateTime | Valid DateTime deriving (Eq, Ord)
 
-instance Show DateTime where
-    show = printDateTime
-
 instance Show Result where
     show SyntaxError = "date/time with wrong syntax"
     show (Invalid _) = "good syntax, but invalid date or time values"
@@ -27,14 +24,18 @@ instance Show Result where
 main :: IO ()
 main = do
   setNewlineTranslations
-  mainDateTime
-
+  mainScanning
+  
 mainDateTime :: IO ()
 mainDateTime = interact (printOutput . processCheck . processInput)
   where
     processInput = map (run parseDateTime) . lines
     processCheck = map (maybe SyntaxError (\x -> if checkDateTime x then Valid x else Invalid x))
     printOutput  = unlines . map show
+
+mainScanning :: IO ()
+mainScanning = do s <- readFileWindows "D:/Documenten/School/UU/Vakken/Talen_en_compilers/TalenEnCompilersPracticals/1-DateTime-iCal/StartingFramework/examples/bastille.ics"
+                  print (run parseToken s)
 
 mainCalendar :: IO ()
 mainCalendar = interact (printOutput . recognizeCalendar)
