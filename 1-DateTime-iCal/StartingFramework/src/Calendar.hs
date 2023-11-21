@@ -53,36 +53,41 @@ parseToken = parseLiteral BeginCalendar "BEGIN:VCALENDAR"
          <|> parseWithBody Summary "SUMMARY:" 
          <|> parseWithBody Location "LOCATION:"
     where
-        parseLiteral :: Token -> Text -> Parser Char Token
-        parseLiteral c t = const c <$ token t <*> parseCRLF -- ff kieken voor andere manier
+        -- Parse a string literal and return a Token constructor without arguments
+        parseLiteral :: Token -> String -> Parser Char Token
+        parseLiteral t s = const t <$ token s <*> parseCRLF -- ff kieken voor andere manier
 
-        parseWithBody :: (Text -> Token) -> Text -> Parser Char Token
-        parseWithBody c t = (\_ p _ -> c p) <$> token t <*> parseText <*> parseCRLF
+        -- Given a Token constructor which takes a Text body and a string literal which identifies (i.e. always precedes)
+        -- the Token body in the text to parse, return a parser for this Token.
+        parseWithBody :: (Text -> Token) -> String -> Parser Char Token
+        parseWithBody t s = (\_ p _ -> t p) <$> token s <*> parseText <*> parseCRLF
             where
                 parseText :: Parser Char Text
                 parseText = some anySymbol
                         <|> token "\r\n "
 
-        parseCRLF :: Parser Char Text
+        parseCRLF :: Parser Char String
         parseCRLF = token "\r\n"
 
 scanCalendar :: Parser Char [Token]
 scanCalendar = some parseToken
 
-data CalProp = Version' | ProdID' Text
+parseEvent :: Parser Token Event
+parseEvent = Event <$> symbol BeginEvent
+-- hier kunnen we niet alle mogelijke volgordes uitschrijven;
+-- we moeten een list maken van alle tokens en dan gaan filteren en zoeken (voor de optionele elementen handig want Maybe)
 
 parseCalendar :: Parser Token Calendar
-parseCalendar = (\_ p1 p2 es -> Calendar (returnID p1 p2) es) <$> symbol BeginCalendar <*> parseCalProp <*> parseCalProp <*> parseEvent
+parseCalendar = (\_ pid es -> Calendar pid es) <$> symbol BeginCalendar <*> parseProdID <*> many parseEvent
     where
-        parseCalProp :: Parser Token CalProp
-        parseCalProp = Version' <$ symbol Version
-                   <|> (\(ProdID t) -> ProdID' t) <$> symbol (\t -> ProdID t)
-
-        parseEvent :: Parser Token Event
-        parseEvent = Event <$> symbol BeginEvent
-
-        returnID p1(ProdID t) _ = t
-        returnID _ p2(ProdID t) = t
+        -- Extracts the ProdID Text body from the two calprops, a Version and a ProdID, at the begin of the calendar,
+        -- which can be in any order
+        parseProdID :: Parser Token Text
+        parseProdID = (\_ (ProdID t) -> t) <$> symbol Version <*> satisfy isProdID
+                   <|> (\(ProdID t) _ -> t) <$> satisfy isProdID <*> symbol Version
+            where
+                isProdID (ProdID _) = True
+                isProdID _ = False
 
 recognizeCalendar :: String -> Maybe Calendar
 recognizeCalendar s = run scanCalendar s >>= run parseCalendar

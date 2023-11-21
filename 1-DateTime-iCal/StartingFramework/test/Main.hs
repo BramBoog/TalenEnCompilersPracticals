@@ -23,8 +23,7 @@ instance Show Result where
 
 main :: IO ()
 main = do
-  setNewlineTranslations
-  mainScanning
+  mainDateTime
   
 mainDateTime :: IO ()
 mainDateTime = interact (printOutput . processCheck . processInput)
@@ -38,7 +37,7 @@ mainScanning = do s <- readFileWindows "D:/Documenten/School/UU/Vakken/Talen_en_
                   print (run parseToken s)
 
 mainCalendar :: IO ()
-mainCalendar = interact (printOutput . recognizeCalendar)
+mainCalendar = setNewlineTranslations >> interact (printOutput . recognizeCalendar)
   where
     printOutput = maybe "Calendar parsing error" (ppMonth (Year 2012) (Month 11))
 
