@@ -21,9 +21,14 @@ instance Show Result where
     show (Invalid _) = "good syntax, but invalid date or time values"
     show (Valid x)   = "valid date: " ++ show x
 
+basePath = "D:/Documenten/School/UU/Vakken/Talen_en_compilers/TalenEnCompilersPracticals/1-DateTime-iCal/StartingFramework/"
+
 main :: IO ()
 main = do
-  mainDateTime
+  print (printCalendar testCalendar)
+  -- setNewlineTranslations
+  -- c <- readCalendar (basePath ++ "examples/bastille.ics")
+  -- print c
   
 mainDateTime :: IO ()
 mainDateTime = interact (printOutput . processCheck . processInput)
@@ -45,6 +50,9 @@ readCalendar :: FilePath -> IO (Maybe Calendar)
 readCalendar path = do
   string <- readFileWindows path
   return $ recognizeCalendar string
+
+testCalendar = Calendar "-//hacksw/handcal//NONSGML v1.0//EN" [
+  Event (DateTime (Date (Year 2012) (Month 11) (Day 01)) (Time (Hour 12) (Minute 50) (Second 30)) True) "12345@example.com" (DateTime (Date (Year 2012) (Month 11) (Day 01)) (Time (Hour 12) (Minute 50) (Second 30)) True) (DateTime (Date (Year 2012) (Month 11) (Day 01)) (Time (Hour 12) (Minute 50) (Second 30)) True) Nothing Nothing (Just "here")]
 
 -- These three functions fight Windows newline translations:
 -- without them, on Windows machines, "\r\n" will be read as "\n"
