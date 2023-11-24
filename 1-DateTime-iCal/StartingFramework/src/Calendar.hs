@@ -1,8 +1,11 @@
+{-# LANGUAGE LambdaCase #-}
 module Calendar where
 
 import ParseLib.Abstract
 import Prelude hiding ((<$), ($>), (<*), (*>), sequence)
 import DateTime
+
+import Data.List (sort)
 
 
 -- Exercise 6
@@ -44,11 +47,11 @@ parseToken = parseLiteral BeginCalendar "BEGIN:VCALENDAR"
          <|> parseLiteral Version "VERSION:2.0"
          <|> parseLiteral BeginEvent "BEGIN:VEVENT"
          <|> parseLiteral EndEvent "END:VEVENT"
-         <|> parseWithBody DTStamp "DTSTAMP:"
+         <|> parseWithBody DTStamp "DTSTAMP:" 
          <|> parseWithBody UID "UID:"
          <|> parseWithBody DTStart "DTSTART:"
          <|> parseWithBody DTStamp "DTSTAMP:"
-         <|> parseWithBody DTEnd "DTEND:" 
+         <|> parseWithBody DTEnd "DTEND:"
          <|> parseWithBody Description "DESCRIPTION:" 
          <|> parseWithBody Summary "SUMMARY:" 
          <|> parseWithBody Location "LOCATION:"
@@ -73,7 +76,21 @@ scanCalendar :: Parser Char [Token]
 scanCalendar = some parseToken
 
 parseEvent :: Parser Token Event
-parseEvent = Event <$> symbol BeginEvent
+parseEvent = (\_ ts _ -> constructEvent ts) <$> symbol BeginEvent <*> (sort <$> some anySymbol) <*> symbol EndEvent
+    where
+        --parseEvent' :: Parser Token Event
+        parseEvent' = ((\case DTStamp x -> x) <$> anySymbol <*> parseDateTime) <*> ((\case UID x -> x) <$> anySymbol) <*> ((\case DTStart x -> x) <$> anySymbol <*> parseDateTime) <*> ((\case DTEnd x -> x) <$> anySymbol <*> parseDateTime)
+
+        constructEvent :: [Token] -> Event
+        constructEvent (t:ts) = undefined -- process t ; constructEvent ts
+            where
+                getDTStamp (t':ts') = case t of
+                    DTStamp x -> (x, ts')
+                    _ -> getDTStamp (ts' ++ [t'])
+                getDTSTamp' ts' = [Event (run parseDateTime stamp) (parseDateTime start) (parseDateTime end) | DTStamp stamp <- ts', UID u <- ts', DTStart start <- ts', DTEnd end <- ts']
+        constructEvent ts' = let dtstamp' = undefined
+                              in undefined
+
 -- hier kunnen we niet alle mogelijke volgordes uitschrijven;
 -- we moeten een list maken van alle tokens en dan gaan filteren en zoeken (voor de optionele elementen handig want Maybe)
 
