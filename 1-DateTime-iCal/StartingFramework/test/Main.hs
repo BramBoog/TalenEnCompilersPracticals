@@ -12,7 +12,7 @@ import Calendar
 import Features
 import System.Environment
 import System.IO
-
+import Data.Maybe (fromJust)
 
 data Result = SyntaxError | Invalid DateTime | Valid DateTime deriving (Eq, Ord)
 
@@ -25,10 +25,9 @@ basePath = "D:/Documenten/School/UU/Vakken/Talen_en_compilers/TalenEnCompilersPr
 
 main :: IO ()
 main = do
-  print (printCalendar testCalendar)
-  -- setNewlineTranslations
-  -- c <- readCalendar (basePath ++ "examples/bastille.ics")
-  -- print c
+  setNewlineTranslations
+  interact (show . (\c -> recognizeCalendar (printCalendar c) == Just c) . fromJust . recognizeCalendar)
+
   
 mainDateTime :: IO ()
 mainDateTime = interact (printOutput . processCheck . processInput)

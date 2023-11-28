@@ -6,7 +6,7 @@ import ParseLib.Abstract
 import Prelude hiding ((<$), ($>), (<*), (*>), sequence)
 import DateTime
 
-import Data.List (sort, find)
+import Data.List (sort, find, splitAt)
 import Data.Maybe (maybe)
 
 
@@ -44,7 +44,7 @@ data Token = BeginCalendar
 
 parseToken :: Parser Char Token
 parseToken = parseLiteral      BeginCalendar "BEGIN:VCALENDAR"
-         <|> parseLiteral      BeginCalendar "END:VCALENDAR"
+         <|> parseLiteral      EndCalendar "END:VCALENDAR"
          <|> parseWithTextBody ProdID "PRODID:"
          <|> parseLiteral      Version "VERSION:2.0"
          <|> parseLiteral      BeginEvent "BEGIN:VEVENT"
@@ -58,14 +58,8 @@ parseToken = parseLiteral      BeginCalendar "BEGIN:VCALENDAR"
          <|> parseWithTextBody Location "LOCATION:"
     where
         parseCRLF :: Parser Char String
-        -- Check if this is a CRLF separating two tokens, or one in a Text, which is determined by whether there's a ' ' character afther the \r\n.
-        -- Looking ahead allows only consuming the CRLF and not the character after preemptively.
-        parseCRLF = look >>= (\case
-                                '\r':'\n':' ':_ -> failp
-                                '\r':'\n':_ -> token "\r\n"
-                                _ -> failp
-                             )
-        
+        parseCRLF = token "\r\n"
+
         -- Parse a string literal and return a Token constructor without arguments
         parseLiteral :: Token -> String -> Parser Char Token
         parseLiteral t s = const t <$ token s <*> parseCRLF -- ff kieken voor andere manier
@@ -73,21 +67,23 @@ parseToken = parseLiteral      BeginCalendar "BEGIN:VCALENDAR"
         -- Given a Token constructor which takes a Text body and a string literal which identifies (i.e. always precedes)
         -- the Token body in the text to parse, return a parser for this Token.
         parseWithTextBody :: (Text -> Token) -> String -> Parser Char Token
-        parseWithTextBody t s = (\_ b _ -> t b) <$> token s <*> parseText <*> parseCRLF
+        parseWithTextBody t s = (\_ b -> t b) <$> token s <*> parseText <* parseCRLF
             where
                 parseText :: Parser Char Text
-                parseText = some anySymbol
-
+                -- Parse a Text body as a series of series of characters with an optional CRLF + space at the end,
+                -- ignoring the optional CRLF + space, then concatenate all the series of characters together to obtain the full Text
+                parseText = concat <$> some (some (satisfy (/= '\r')) <* optional (token "\r\n "))
+                            
         -- Given a Token constructor which takes a DateTime body and a string literal which identifies (i.e. always precedes)
         -- the Token body in the text to parse, return a parser for this Token.
         parseWithDTBody :: (DateTime -> Token) -> String -> Parser Char Token
-        parseWithDTBody t s = (\_ b _ -> t b) <$> token s <*> parseDateTime <*> parseCRLF
+        parseWithDTBody t s = (\_ b -> t b) <$> token s <*> parseDateTime <* parseCRLF
 
 scanCalendar :: Parser Char [Token]
 scanCalendar = some parseToken
 
 parseEvent :: Parser Token Event
-parseEvent = (\_ ts _ -> constructEvent ts) <$> symbol BeginEvent <*> some anySymbol <*> symbol EndEvent
+parseEvent = (\_ ts _ -> constructEvent ts) <$> symbol BeginEvent <*> some (satisfy (/= EndEvent)) <*> symbol EndEvent
     where
         -- Constructs an Event based on a list of tokens containing the required and optional eventprops
         constructEvent :: [Token] -> Event
@@ -96,9 +92,9 @@ parseEvent = (\_ ts _ -> constructEvent ts) <$> symbol BeginEvent <*> some anySy
                                 uid'         = case sorted !! 1 of UID u -> u
                                 dtstart'     = case sorted !! 2 of DTStart dt -> dt
                                 dtend'       = case sorted !! 3 of DTEnd dt -> dt
-                                description' = (\(Description d) -> d) <$> find (\(Description d) -> True) sorted
-                                summary'     = (\(Summary s) -> s) <$> find (\ (Summary s) -> True) sorted
-                                location'    = (\(Location l) -> l) <$> find (\(Location l) -> True) sorted
+                                description' = (\(Description d) -> d) <$> find (\case (Description d) -> True; _ -> False) sorted
+                                summary'     = (\(Summary s) -> s) <$> find (\case (Summary s) -> True; _ -> False) sorted
+                                location'    = (\(Location l) -> l) <$> find (\case (Location l) -> True; _ -> False) sorted
                              in Event dtstamp' uid' dtstart' dtend' description' summary' location'
 
 parseCalendar :: Parser Token Calendar
@@ -110,6 +106,7 @@ parseCalendar = (\_ pid es _ -> Calendar pid es) <$> symbol BeginCalendar <*> pa
         parseProdID = (\_ (ProdID t) -> t) <$> symbol Version <*> satisfy isProdID
                   <|> (\(ProdID t) _ -> t) <$> satisfy isProdID <*> symbol Version
             where
+                isProdID :: Token -> Bool
                 isProdID (ProdID _) = True
                 isProdID _ = False
 
@@ -118,22 +115,40 @@ recognizeCalendar s = run scanCalendar s >>= run parseCalendar
 
 -- Exercise 8
 printCalendar :: Calendar -> String
-printCalendar (Calendar id es) = 
-    "BEGIN:VCALENDAR\r\n" ++ 
+printCalendar Calendar{prodid, events} =
+    "BEGIN:VCALENDAR\r\n" ++
     "VERSION:2.0\r\n" ++
-    "PRODID:" ++ id ++ "\r\n" ++
-    printEvents es ++
+    printWithTextBody "PRODID:" prodid ++
+    printEvents events ++
     "END:VCALENDAR\r\n"
     where
+        printEvents :: [Event] -> String
         printEvents = foldl (\s e -> s ++ createEventString e) ""
-        createEventString Event{dtstamp, uid, dtstart, dtend, description, summary, location} = 
+
+        createEventString :: Event -> String
+        createEventString Event{dtstamp, uid, dtstart, dtend, description, summary, location} =
             "BEGIN:VEVENT\r\n" ++
-            "DTSTAMP:" ++ printDateTime dtstamp ++ "\r\n" ++
-            "UID:" ++ uid ++ "\r\n" ++
-            "DTSTART:" ++ printDateTime dtstart ++ "\r\n" ++
-            "DTEND:" ++ printDateTime dtend ++ "\r\n" ++
+            printWithDTBody "DTSTAMP:" dtstamp ++
+            printWithTextBody "UID:" uid ++
+            printWithDTBody "DTSTART:" dtstart ++
+            printWithDTBody "DTEND:" dtend ++
             printOptionalText "DESCRIPTION:" description ++
             printOptionalText "SUMMARY:" summary ++
             printOptionalText "LOCATION:" location ++
             "END:VEVENT\r\n"
-        printOptionalText pf = maybe "" (\t -> pf ++ t ++ "\r\n")
+        
+        printWithTextBody :: String -> String -> String
+        printWithTextBody pf b = insertNewLine (pf ++ b) ++ "\r\n"
+
+        printWithDTBody :: String -> DateTime -> String 
+        printWithDTBody pf b = pf ++ printDateTime b ++ "\r\n"
+
+        printOptionalText :: String -> Maybe String -> String
+        printOptionalText pf = maybe "" (printWithTextBody pf)
+        
+        insertNewLine :: String -> String
+        insertNewLine cs | length cs > 42 = let (first, second) = splitAt 42 cs 
+                                            in first ++ "\r\n " ++ second
+                         | otherwise      = cs
+
+                
