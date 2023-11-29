@@ -9,7 +9,13 @@ import Data.Maybe (isJust)
 data DateTime = DateTime { date :: Date
                          , time :: Time
                          , utc  :: Bool }
-    deriving (Eq, Ord)
+    deriving (Eq)
+
+instance Ord DateTime where
+    dt1 <= dt2 = date dt1 <= date dt2 && time dt1 <= time dt2
+    dt1 >= dt2 = date dt1 >= date dt2 && time dt1 >= time dt2
+    dt1 < dt2 = date dt1 < date dt2 && time dt1 < time dt2
+    dt1 > dt2 = date dt1 > date dt2 && time dt1 > time dt2
 
 data Date = Date { year  :: Year
                  , month :: Month
