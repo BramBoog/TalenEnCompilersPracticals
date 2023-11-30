@@ -26,8 +26,7 @@ basePath = "D:/Documenten/School/UU/Vakken/Talen_en_compilers/TalenEnCompilersPr
 main :: IO ()
 main = do
   setNewlineTranslations
-  interact (show . findEvents (DateTime (Date (Year 2010) (Month 12) (Day 31)) (Time (Hour 23) (Minute 50) (Second 0)) False) . fromJust . recognizeCalendar)
-
+  interact (show . timeSpent "New Years Eve" . fromJust . recognizeCalendar)
   
 mainDateTime :: IO ()
 mainDateTime = interact (printOutput . processCheck . processInput)

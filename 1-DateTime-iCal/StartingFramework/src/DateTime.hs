@@ -9,13 +9,13 @@ import Data.Maybe (isJust)
 data DateTime = DateTime { date :: Date
                          , time :: Time
                          , utc  :: Bool }
-    deriving (Eq)
+    deriving (Eq, Ord)
 
-instance Ord DateTime where
-    dt1 <= dt2 = date dt1 <= date dt2 && time dt1 <= time dt2
-    dt1 >= dt2 = date dt1 >= date dt2 && time dt1 >= time dt2
-    dt1 < dt2 = date dt1 < date dt2 && time dt1 < time dt2
-    dt1 > dt2 = date dt1 > date dt2 && time dt1 > time dt2
+-- instance Ord DateTime where
+--     dt1 <= dt2 = date dt1 <= date dt2 && time dt1 <= time dt2
+--     dt1 >= dt2 = date dt1 >= date dt2 && time dt1 >= time dt2
+--     dt1 < dt2 = date dt1 < date dt2 || (date dt1 == date dt2 && time dt1 < time dt2)
+--     dt1 > dt2 = date dt1 > date dt2 && time dt1 > time dt2
 
 data Date = Date { year  :: Year
                  , month :: Month
@@ -43,11 +43,11 @@ parseDateTime = (\d _ t u -> DateTime d t u) <$> parseDate <*> symbol 'T' <*> pa
         parseUTC :: Parser Char Bool
         parseUTC = isJust <$> optional (symbol 'Z')
 
-parseDate :: Parser Char Date
-parseDate = Date <$> parseYear <*> parseMonth <*> parseDay
+        parseDate :: Parser Char Date
+        parseDate = Date <$> parseYear <*> parseMonth <*> parseDay
 
-parseTime :: Parser Char Time
-parseTime = Time <$> parseHour <*> parseMinute <*> parseSecond
+        parseTime :: Parser Char Time
+        parseTime = Time <$> parseHour <*> parseMinute <*> parseSecond
 
 -- Convert a list of digits into a single number; for example [1, 3, 6] becomes 136
 digitsToNum :: [Int] -> Int
