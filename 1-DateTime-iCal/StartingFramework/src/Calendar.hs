@@ -87,14 +87,14 @@ parseEvent = (\_ ts _ -> constructEvent ts) <$> symbol BeginEvent <*> some (sati
     where
         -- Constructs an Event based on a list of tokens containing the required and optional eventprops
         constructEvent :: [Token] -> Event
-        constructEvent ts = let sorted = sort ts
+        constructEvent ts = let sorted       = sort ts
                                 dtstamp'     = case sorted !! 0 of DTStamp dt -> dt
                                 uid'         = case sorted !! 1 of UID u -> u
                                 dtstart'     = case sorted !! 2 of DTStart dt -> dt
                                 dtend'       = case sorted !! 3 of DTEnd dt -> dt
-                                description' = (\(Description d) -> d) <$> find (\case (Description d) -> True; _ -> False) sorted
-                                summary'     = (\(Summary s) -> s) <$> find (\case (Summary s) -> True; _ -> False) sorted
-                                location'    = (\(Location l) -> l) <$> find (\case (Location l) -> True; _ -> False) sorted
+                                description' = (\(Description d) -> d) <$> find (\case (Description _) -> True; _ -> False) sorted
+                                summary'     = (\(Summary s) -> s) <$> find (\case (Summary _) -> True; _ -> False) sorted
+                                location'    = (\(Location l) -> l) <$> find (\case (Location _) -> True; _ -> False) sorted
                              in Event dtstamp' uid' dtstart' dtend' description' summary' location'
 
 parseCalendar :: Parser Token Calendar
@@ -148,7 +148,7 @@ printCalendar Calendar{prodid, events} =
         
         insertNewLine :: String -> String
         insertNewLine cs | length cs > 42 = let (first, second) = splitAt 42 cs 
-                                            in first ++ "\r\n " ++ second
+                                             in first ++ "\r\n " ++ second
                          | otherwise      = cs
 
                 

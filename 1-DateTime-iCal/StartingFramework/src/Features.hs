@@ -5,6 +5,9 @@ import Prelude hiding ((<>))
 import DateTime
 import Calendar
 import Text.PrettyPrint.Boxes
+import qualified Data.Map as M
+import Data.List (sort)
+import qualified Data.Set as S
 import Data.Time.Clock
 import Data.Time (fromGregorian, gregorianMonthLength)
 import qualified Data.Time.Calendar as Cal
@@ -64,12 +67,109 @@ timeSpent s Calendar{events} = sum $ map durationInMinutes (filter compareSummar
                 dateToDay (Date (Year y) (Month m) (Day d)) = fromGregorian (toInteger y) m d
 
 -- Exercise 10
-ppMonth :: Year -> Month -> Calendar -> String
-ppMonth (Year y) (Month m) c = render (dayBox 1)
+
+type TimeRange = (Time, Time)
+type DateBuckets = M.Map Date [TimeRange]
+data Appointment = Appointment {dateKey :: Date, timeRange :: TimeRange} deriving (Eq, Show)
+
+-- Generate the necessary Appointments to represent the Event in a printed calendar
+getAppointments :: Year -> Month -> Event -> [Appointment]
+getAppointments y m Event{dtstart, dtend} | dateS == dateE = singleDayAppointment
+                                          | otherwise = startDayAppointment ++ endDayAppointment
     where
-        dayBox n = text ('+' : replicate columnWidth '-' ++ "+") // text ('|' : rightPadToN columnWidth (' ' : show n) ++ "|")
-        columnWidth = 15
-        rightPadToN :: Int -> String -> String
-        rightPadToN n s = let d = n - length s
-                           in s ++ replicate d ' '
-        monthLength = gregorianMonthLength (toInteger y) m
+        DateTime{date = dateS@Date{year = yearS, month = monthS, day = dayS}, time = timeS@Time{hour = hourS, minute = minuteS}} = dtstart
+        DateTime{date = dateE@Date{year = yearE, month = monthE, day = dayE}, time = timeE@Time{hour = hourE, minute = minuteE}} = dtend
+        
+        -- Functions to generate Appointments for the event; if the start and end date are the same, the result is a single Appointment.
+        -- If they differ, generate one Appointment until midnight on the start date and another one from midnight on the end date.
+        -- NOTE: this assumes appointments never span more than one day, month or year.
+        -- Appointments are not generated for dates of which the year and month don't match with the requested year and month
+        singleDayAppointment :: [Appointment] 
+        singleDayAppointment | y /= yearS || m /= monthS = []
+                             | otherwise = [Appointment dateS (timeS, timeE)]
+
+        startDayAppointment :: [Appointment] 
+        startDayAppointment | y /= yearS || m /= monthS = []
+                            | otherwise = [Appointment dateS (timeS, Time (Hour 23) (Minute 59) (Second 59))]
+
+        endDayAppointment :: [Appointment]
+        endDayAppointment | y /= yearE || m /= monthE = []
+                          | otherwise = [Appointment dateE (Time (Hour 0) (Minute 0) (Second 0), timeE)]
+
+createDateBuckets :: [Appointment] -> DateBuckets
+createDateBuckets = foldr insertAppointment M.empty
+    where
+        insertAppointment Appointment{dateKey, timeRange} = M.insertWith (++) dateKey [timeRange]
+
+ppMonth :: Year -> Month -> Calendar -> String
+ppMonth y m Calendar{events} = render monthBox
+    where
+        dateBuckets = M.map sort (createDateBuckets (concatMap (getAppointments y m) events))
+
+        monthBox :: Box
+        monthBox = vcat top (allWeeks 1)
+            where
+                allWeeks :: Int -> [Box]
+                allWeeks startDay | startDay < numOfDaysInMonth = weekBox startDay wLength : allWeeks (startDay + 7)
+                                  | otherwise = []
+                    where
+                        numOfDaysInMonth = gregorianMonthLength (toInteger $ runYear y) (runMonth m)
+                        
+                        -- Determine how many days of a week fall in the given month
+                        wLength :: Int
+                        wLength | monthWeekDayDiff >= 7 = 6
+                                | otherwise = monthWeekDayDiff
+                            where
+                                monthWeekDayDiff = numOfDaysInMonth - startDay
+
+        -- Make a box for a week of appointments, given the startday and the amount of days in the week (which is less than 7 if the month ends before the week)
+        weekBox :: Int -> Int -> Box
+        weekBox startDay weekLength = hcat left (map createDayBox allDaysOfWeek)
+            where
+                allDaysOfWeek :: [Date]
+                allDaysOfWeek = [Date y m (Day x) | x <- [startDay..(startDay + weekLength)]]
+                dateBucketsOfWeek = M.restrictKeys dateBuckets (S.fromList allDaysOfWeek)
+
+                -- Determines how high each of the boxes in the week needs to be      
+                maxAppointments :: Int     
+                maxAppointments = if M.null dateBucketsOfWeek then 0
+                                  else maximum (map (length . snd) (M.toList dateBucketsOfWeek))
+
+                createDayBox date = let trs = M.findWithDefault [] date dateBucketsOfWeek
+                                     in dayBox date trs maxAppointments
+
+        -- Provided with a date, list of time ranges for appointments on that date, and height of the box, creates a box representing a day
+        dayBox :: Date -> [TimeRange] -> Int -> Box
+        dayBox (Date _ _ (Day d)) timeRanges height = lineBox // dayNumberBox d // intermediateBoxes timeRanges height // lineBox
+            where
+                cellWidth = 15
+
+                fillCellLineWith :: Char -> String
+                fillCellLineWith = replicate cellWidth
+
+                -- Creates a box used to separate the other boxes
+                lineBox :: Box
+                lineBox = text ('+' : fillCellLineWith '-' ++ "+")
+
+                -- Creates a box used to represent the number of day
+                dayNumberBox :: Int -> Box
+                dayNumberBox n = text ('|' : rightPadInt (' ' : show n) ++ "|")
+                    where
+                        rightPadInt :: String -> String
+                        rightPadInt s = s ++ replicate (cellWidth - length s) ' '
+
+                -- Creates the intermediate box for a day by filling in events (expressed as time ranges) and pads the 
+                -- rest of the intermediate box with empty boxes so that it aligns with the rest of the day boxes
+                intermediateBoxes :: [TimeRange] -> Int -> Box
+                intermediateBoxes trs n = vcat left (map timeRangeBox trs) // vcat left (replicate (n - length trs) emptyBox)
+                    where
+                        -- Creates an empty box to pad a day box
+                        emptyBox :: Box
+                        emptyBox = text ('|' : fillCellLineWith ' ' ++ "|") 
+
+                        -- Creates a box with a time range for a day box
+                        timeRangeBox :: TimeRange -> Box
+                        timeRangeBox tr = text ('|' : showTimeRange tr ++ "|")
+                            where
+                                showTimeRange :: TimeRange -> String
+                                showTimeRange (Time{hour = h1, minute = m1}, Time{hour = h2, minute = m2}) = " " ++ show h1 ++ ":" ++ show m1 ++ " - " ++ show h2 ++ ":" ++ show m2 ++ " "

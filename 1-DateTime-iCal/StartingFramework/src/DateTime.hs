@@ -11,16 +11,10 @@ data DateTime = DateTime { date :: Date
                          , utc  :: Bool }
     deriving (Eq, Ord)
 
--- instance Ord DateTime where
---     dt1 <= dt2 = date dt1 <= date dt2 && time dt1 <= time dt2
---     dt1 >= dt2 = date dt1 >= date dt2 && time dt1 >= time dt2
---     dt1 < dt2 = date dt1 < date dt2 || (date dt1 == date dt2 && time dt1 < time dt2)
---     dt1 > dt2 = date dt1 > date dt2 && time dt1 > time dt2
-
 data Date = Date { year  :: Year
                  , month :: Month
                  , day   :: Day }
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 newtype Year  = Year  { runYear  :: Int } deriving (Eq, Ord)
 newtype Month = Month { runMonth :: Int } deriving (Eq, Ord)
@@ -29,7 +23,7 @@ newtype Day   = Day   { runDay   :: Int } deriving (Eq, Ord)
 data Time = Time { hour   :: Hour
                  , minute :: Minute
                  , second :: Second }
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 newtype Hour   = Hour   { runHour   :: Int } deriving (Eq, Ord)
 newtype Minute = Minute { runMinute :: Int } deriving (Eq, Ord)
