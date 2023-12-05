@@ -8,7 +8,7 @@ import Model
 %tokentype { Token }
 
 %token
-  x { Token }
+  x { PeriodT }
 
 %%
 
