@@ -34,7 +34,7 @@ data Program = Program [Rule]
 data Rule = Rule Ident' [Command]
     deriving Show
 
-data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt]
+data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt] | IdentCmd Ident'
     deriving Show
 
 data Dir = Left' | Right' | Front 
