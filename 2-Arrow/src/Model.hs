@@ -22,19 +22,19 @@ data Token = ArrowT
            | AsteroidT 
            | BoundaryT
            | UnderscoreT 
-           | IdentT Ident'
+           | IdentT Ident
     deriving Show
 
-type Ident' = String
+type Ident = String
 
 -- Exercise 2
 data Program = Program [Rule] 
     deriving Show
 
-data Rule = Rule Ident' [Command]
+data Rule = Rule Ident [Command]
     deriving Show
 
-data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt] | IdentCmd Ident'
+data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt] | IdentCmd Ident
     deriving Show
 
 data Dir = Left' | Right' | Front 
@@ -44,4 +44,4 @@ data Alt = Alt Pat [Command]
     deriving Show
 
 data Pat = Empty' | Lambda' | Debris' | Asteroid' | Boundary' | Underscore
-    deriving Show
+    deriving (Show, Eq)
