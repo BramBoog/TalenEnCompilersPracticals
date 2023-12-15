@@ -52,11 +52,11 @@ Cmd : go                              { Go }
     | nothing                         { Nothing' }
     | turn Dir                        { Turn $2 }
     | case Dir of Alts end            { Case $2 $4 }
-    | ident                           { IdentCmd $1 }
+    | ident                           { RuleCall $1 }
     
-Dir : left                            { Left' }
-    | right                           { Right' }
-    | front                           { Front }
+Dir : left                            { ToLeft }
+    | right                           { ToRight }
+    | front                           { ToFront }
 
 Alts : {- empty -}                    { [] }
      | Alt AltsWithSep                { $1 : $2 }
@@ -66,11 +66,11 @@ AltsWithSep : {- empty -}             { [] }
 
 Alt : Pat "->" Cmds                   { Alt $1 $3 }
 
-Pat : empty                           { Empty' }
-    | lambda                          { Lambda' }
-    | debris                          { Debris' }
-    | asteroid                        { Asteroid' }
-    | boundary                        { Boundary' }
+Pat : empty                           { EmptyP }
+    | lambda                          { LambdaP }
+    | debris                          { DebrisP }
+    | asteroid                        { AsteroidP }
+    | boundary                        { BoundaryP }
     | '_'                             { Underscore }
 
 {

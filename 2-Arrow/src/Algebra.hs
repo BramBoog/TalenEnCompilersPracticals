@@ -15,22 +15,22 @@ data ProgramAlgebra p r c d a t = ProgramAlgebra { program :: [r] -> p
                                                  , nothing' :: c
                                                  , turn :: d -> c
                                                  , case' :: d -> [a] -> c
-                                                 , identCmd :: Ident -> c
-                                                 , left' :: d
-                                                 , right' :: d
-                                                 , front :: d
+                                                 , ruleCall :: Ident -> c
+                                                 , toLeft :: d
+                                                 , toRight :: d
+                                                 , toFront :: d
                                                  , alt :: t -> [c] -> a
-                                                 , empty' :: t 
-                                                 , lambda' :: t 
-                                                 , debris' :: t
-                                                 , asteroid' :: t
-                                                 , boundary' :: t
+                                                 , emptyP :: t 
+                                                 , lambdaP :: t 
+                                                 , debrisP :: t
+                                                 , asteroidP :: t
+                                                 , boundaryP :: t
                                                  , underscore :: t
                                                  }
 
 fold :: ProgramAlgebra p r c d a t -> Program -> p
 fold
-  (ProgramAlgebra program rule go take mark nothing' turn case' identCmd left' right' front alt empty' lambda' debris' asteroid' boundary' underscore)
+  (ProgramAlgebra program rule go take mark nothing' turn case' ruleCall toLeft toRight toFront alt emptyP lambdaP debrisP asteroidP boundaryP underscore)
   = fP
     where
         fP (Program rs) = program (map fR rs)
@@ -41,16 +41,16 @@ fold
         fC Nothing' = nothing'
         fC (Turn d) = turn (fD d)
         fC (Case d as) = case' (fD d) (map fA as)
-        fC (IdentCmd i) = identCmd i 
-        fD Left' = left' 
-        fD Right' = right' 
-        fD Front = front
+        fC (RuleCall i) = ruleCall i 
+        fD ToLeft = toLeft 
+        fD ToRight = toRight 
+        fD ToFront = toFront
         fA (Alt p cs) = alt (fPat p) (map fC cs)
-        fPat Empty' = empty' 
-        fPat Lambda' = lambda' 
-        fPat Debris' = debris' 
-        fPat Asteroid' = asteroid' 
-        fPat Boundary' = boundary' 
+        fPat EmptyP = emptyP 
+        fPat LambdaP = lambdaP 
+        fPat DebrisP = debrisP 
+        fPat AsteroidP = asteroidP 
+        fPat BoundaryP = boundaryP 
         fPat Underscore = underscore
 
 
@@ -66,7 +66,7 @@ noUndefinedCalls = ProgramAlgebra {
   nothing' = [],
   turn = const [],
   case' = \_ cs -> concat cs,
-  identCmd = \i -> [i],
+  ruleCall = \i -> [i],
   alt = \_ cs -> concat cs
 }
   where
@@ -97,20 +97,18 @@ completePatternMatches = ProgramAlgebra {
   nothing' = True,
   turn = const True,
   case' = \_ as -> isComplete (map fst as) && and (map snd as),
-  identCmd = const True,
+  ruleCall = const True,
   alt = \pat cs -> (pat, and cs),
-  empty' = Empty',
-  lambda' = Lambda',
-  debris' = Debris',
-  asteroid' = Asteroid',
-  boundary' = Boundary',
+  emptyP = EmptyP,
+  lambdaP = LambdaP,
+  debrisP = DebrisP,
+  asteroidP = AsteroidP,
+  boundaryP = BoundaryP,
   underscore = Underscore
 }
   where
     isComplete :: [Pat] -> Bool
-    isComplete pats = Underscore `elem` pats || all (`elem` pats) [Empty', Lambda', Debris', Asteroid', Boundary']
+    isComplete pats = Underscore `elem` pats || all (`elem` pats) [EmptyP, LambdaP, DebrisP, AsteroidP, BoundaryP]
 
 checkProgram :: Program -> Bool
 checkProgram p = fold noUndefinedCalls p && fold existsStartRule p && fold noDoublyDefinedRule p && fold completePatternMatches p
-
-

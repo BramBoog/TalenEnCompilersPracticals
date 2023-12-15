@@ -34,14 +34,14 @@ data Program = Program [Rule]
 data Rule = Rule Ident [Command]
     deriving Show
 
-data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt] | IdentCmd Ident
+data Command = Go | Take | Mark | Nothing' | Turn Dir | Case Dir [Alt] | RuleCall Ident
     deriving Show
 
-data Dir = Left' | Right' | Front 
+data Dir = ToLeft | ToRight | ToFront 
     deriving Show
 
 data Alt = Alt Pat [Command]
     deriving Show
 
-data Pat = Empty' | Lambda' | Debris' | Asteroid' | Boundary' | Underscore
+data Pat = EmptyP | LambdaP | DebrisP | AsteroidP | BoundaryP | Underscore
     deriving (Show, Eq)
