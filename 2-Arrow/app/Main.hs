@@ -8,10 +8,13 @@ import Parser
 
 -- Exercise 11
 interactive :: Environment -> ArrowState -> IO ()
-interactive = undefined
+interactive e a = undefined
 
 batch :: Environment -> ArrowState -> (Space, Pos, Heading)
-batch = undefined
+batch e a = case step e a of
+              Done s p h -> (s, p , h)
+              Fail m -> error m
+              Ok as -> batch e as
 
 -- This function is just here to play around with and test your lexer/parser.
 -- When implementing exercise 11, delete this comment and this function,
