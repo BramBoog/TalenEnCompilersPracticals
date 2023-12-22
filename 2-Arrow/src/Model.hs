@@ -28,7 +28,7 @@ data Token = ArrowT
 type Ident = String
 
 -- Exercise 2
-data Program = Program [Rule] 
+newtype Program = Program [Rule] 
     deriving Show
 
 data Rule = Rule Ident [Command]

@@ -31,27 +31,27 @@ data ProgramAlgebra p r c d a t = ProgramAlgebra { program :: [r] -> p
 fold :: ProgramAlgebra p r c d a t -> Program -> p
 fold
   (ProgramAlgebra program rule go take mark nothing' turn case' ruleCall toLeft toRight toFront alt emptyP lambdaP debrisP asteroidP boundaryP underscore)
-  = fP
+  = foldP
     where
-        fP (Program rs) = program (map fR rs)
-        fR (Rule i cs) = rule i (map fC cs)
-        fC Go = go
-        fC Take = take
-        fC Mark = mark
-        fC Nothing' = nothing'
-        fC (Turn d) = turn (fD d)
-        fC (Case d as) = case' (fD d) (map fA as)
-        fC (RuleCall i) = ruleCall i 
-        fD ToLeft = toLeft 
-        fD ToRight = toRight 
-        fD ToFront = toFront
-        fA (Alt p cs) = alt (fPat p) (map fC cs)
-        fPat EmptyP = emptyP 
-        fPat LambdaP = lambdaP 
-        fPat DebrisP = debrisP 
-        fPat AsteroidP = asteroidP 
-        fPat BoundaryP = boundaryP 
-        fPat Underscore = underscore
+        foldP (Program rs) = program (map foldR rs)
+        foldR (Rule i cs) = rule i (map foldC cs)
+        foldC Go = go
+        foldC Take = take
+        foldC Mark = mark
+        foldC Nothing' = nothing'
+        foldC (Turn d) = turn (foldD d)
+        foldC (Case d as) = case' (foldD d) (map foldA as)
+        foldC (RuleCall i) = ruleCall i 
+        foldD ToLeft = toLeft 
+        foldD ToRight = toRight 
+        foldD ToFront = toFront
+        foldA (Alt p cs) = alt (foldPat p) (map foldC cs)
+        foldPat EmptyP = emptyP 
+        foldPat LambdaP = lambdaP 
+        foldPat DebrisP = debrisP 
+        foldPat AsteroidP = asteroidP 
+        foldPat BoundaryP = boundaryP 
+        foldPat Underscore = underscore
 
 
 -- Exercise 6
