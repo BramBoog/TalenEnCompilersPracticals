@@ -34,7 +34,7 @@ data Expr   -- Expressions
   | ExprOper  Operator Expr Expr
   deriving (Eq, Ord, Show)
 
-data Operator -- Binary operators
+data Operator -- Binary operators, in descending order of priority (same line is same priority)
   = OpMul | OpDiv | OpMod 
   | OpAdd | OpSub 
   | OpLeq | OpLt | OpGeq | OpGt

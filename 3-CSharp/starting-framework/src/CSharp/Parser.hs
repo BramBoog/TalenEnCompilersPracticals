@@ -192,39 +192,8 @@ sLowerId = anySymbol >>= \case
   LowerId x -> pure x
   _ -> failp
 
-sOpAsg :: Parser Token Operator
-sOpAsg = anySymbol >>= \case
-  Operator OpAsg -> pure OpAsg
-  _ -> failp
-
-sOpOr :: Parser Token Operator
-sOpOr = anySymbol >>= \case
-  Operator OpOr -> pure OpOr
-  _ -> failp
-
-sOpAnd :: Parser Token Operator
-sOpAnd = anySymbol >>= \case
-  Operator OpAnd -> pure OpAnd
-  _ -> failp
-  
-sOpXor :: Parser Token Operator
-sOpXor = anySymbol >>= \case
-  Operator OpOr -> pure OpXor
-  _ -> failp
-  
-sOpNEq :: Parser Token Operator
-sOpNEq = anySymbol >>= \case
-  Operator OpEq -> pure OpEq
-  Operator OpNeq -> pure OpNeq
-  _ -> failp
-  
-sOpLG :: Parser Token Operator
-sOpLG = anySymbol >>= \case
-  Operator OpLeq -> pure OpLeq
-  Operator OpLt -> pure OpLt
-  Operator OpGeq -> pure OpGeq
-  Operator OpGt -> pure OpGt
-  _ -> failp
+sOperator :: [Operator] -> Parser Token Operator
+sOperator ops = choice (map (\o -> o <$ symbol (Operator o)) ops)
 
 ----- End Lexer-Parser glue -----
 
@@ -259,25 +228,34 @@ pLiteral :: Parser Token Literal
 pLiteral =  LitBool <$> sBoolLit
         <|> LitInt  <$> sIntLit
 
+pExprAsg :: Parser Token Expr
+pExprAsg = chainr pExprOr (ExprOper <$> sOperator [OpAsg])
+
+pExprOr :: Parser Token Expr
+pExprOr = chainl pExprAnd (ExprOper <$> sOperator [OpOr])
+
+pExprAnd :: Parser Token Expr
+pExprAnd = chainl pExprXor (ExprOper <$> sOperator [OpAnd])
+
+pExprXor :: Parser Token Expr
+pExprXor = chainl pExprEqNeq (ExprOper <$> sOperator [OpXor])
+
+pExprEqNeq :: Parser Token Expr
+pExprEqNeq = chainl pExprLeqLtGeqGt (ExprOper <$> sOperator [OpEq, OpNeq])
+
+pExprLeqLtGeqGt :: Parser Token Expr
+pExprLeqLtGeqGt = chainl pExprAddSub (ExprOper <$> sOperator [OpLeq, OpLt, OpGeq, OpGt])
+
+pExprAddSub :: Parser Token Expr
+pExprAddSub = chainl pExprMulDivMod (ExprOper <$> sOperator [OpAdd, OpSub])
+
+pExprMulDivMod :: Parser Token Expr
+pExprMulDivMod = chainl pExprSimple (ExprOper <$> sOperator [OpMul, OpDiv, OpMod])
+
 pExprSimple :: Parser Token Expr
 pExprSimple =  ExprLit  <$> pLiteral
            <|> ExprVar  <$> sLowerId
            <|> parenthesised pExprAsg
-
-pExprAsg :: Parser Token Expr
-pExprAsg = chainr pExprOr (ExprOper <$> sOpAsg)
-
-pExprOr :: Parser Token Expr
-pExprOr = chainr pExprAnd (ExprOper <$> sOpOr)
-
-pExprAnd :: Parser Token Expr
-pExprAnd = chainr pExprXor (ExprOper <$> sOpAnd)
-
-pExprXor :: Parser Token Expr
-pExprXor = chainr pExprEqAndNeq (ExprOper <$> sOpXor)
-
-pExprEqAndNeq :: Parser Token Expr
-pExprEqAndNeq = chainr pExprAnd (ExprOper <$> sOpNEq)
 
 pDecl :: Parser Token Decl
 pDecl = Decl <$> pRetType <*> sLowerId
