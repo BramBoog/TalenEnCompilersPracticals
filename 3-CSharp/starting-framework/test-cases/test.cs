@@ -1,10 +1,11 @@
 class Test {
     void main() {
-        int a;
-        a = 2 * 3 + 4 * 5;
-        a = 2 + 3 + 4;
-        int b;
-        int c;
-        b = a = c;
+        int x;
+
+        for(int i, i = 0; i<5; i = i + 1){
+            int j;
+            j = 1;
+            j + i;
+        }
     }
 }

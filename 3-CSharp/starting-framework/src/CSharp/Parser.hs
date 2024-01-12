@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use void" #-}
+{-# LANGUAGE NamedFieldPuns #-}
+
 
 -- This module implements a parser for
 --  (a subset of) the C# programming language
@@ -23,11 +25,14 @@ Statdecl ::= Stat | Decl ;
 Stat ::= Expr ;
        | if ( Expr ) Stat Else?
        | while ( Expr ) Stat
+       | for ( ExprDecls? ; Expr ; ExprDecls? ) stat
        | return Expr ;
        | Block
 Else ::= else Stat
 Typevoid ::= Type | void
 Type ::= int | bool
+ExprDecls ::= ExprDecl | ExprDecl , ExprDecls
+ExprDecl ::= Expr | Decl
 Expr ::= Exprsimple
        | Exprsimple operator Expr
 Exprsimple ::= const | lowerid | ( Expr )
@@ -70,6 +75,7 @@ printKeyword = \case
   ; KeyWhile -> "while";  KeyReturn -> "return"
   ; KeyTry   -> "try";    KeyCatch  -> "catch"
   ; KeyClass -> "class";  KeyVoid   -> "void"
+  ; KeyFor   -> "for"
   }
 
 -- Concrete syntax of C# punctuation
@@ -95,6 +101,7 @@ data Keyword
   | KeyWhile | KeyReturn
   | KeyTry   | KeyCatch
   | KeyClass | KeyVoid
+  | KeyFor
   deriving (Eq, Show, Ord, Enum, Bounded)
 
 data Punctuation
@@ -121,7 +128,7 @@ data Token  -- What the lexer returns
 
 -- Entry point for the lexer
 lexicalScanner :: Parser Char [Token]
-lexicalScanner = lexWhiteSpace *> greedy (lexToken <* lexWhiteSpace) <* eof
+lexicalScanner = lexWhiteSpace *> greedy (lexToken <* lexWhiteSpace <* optional lexComment <* lexWhiteSpace) <* eof
 
 lexToken :: Parser Char Token
 lexToken = greedyChoice
@@ -152,6 +159,9 @@ lexIdent = greedy (satisfy isAlphaNum)
 
 lexWhiteSpace :: Parser Char String
 lexWhiteSpace = greedy (satisfy isSpace)
+
+lexComment :: Parser Char ()
+lexComment = () <$ token "//" <* many (satisfy (/= '\n')) <* symbol '\n'
 
 greedyChoice :: [Parser s a] -> Parser s a
 greedyChoice = foldr (<<|>) empty
@@ -218,11 +228,26 @@ pStatDecl =  pStat
 
 pStat :: Parser Token Stat
 pStat =  StatExpr <$> pExprAsg <* sSemi
-     <|> StatIf     <$ keyword KeyIf     <*> parenthesised pExprAsg <*> pStat <*> optionalElse
-     <|> StatWhile  <$ keyword KeyWhile  <*> parenthesised pExprAsg <*> pStat
-     <|> StatReturn <$ keyword KeyReturn <*> pExprAsg               <*  sSemi
+     <|> StatIf     <$ keyword KeyIf     <*> parenthesised pExprAsg   <*> pStat <*> optionalElse
+     <|> StatWhile  <$ keyword KeyWhile  <*> parenthesised pExprAsg   <*> pStat
+     <|> forToWhile <$ keyword KeyFor    <*> parenthesised pForHeader <*> pStat
+     <|> StatReturn <$ keyword KeyReturn <*> pExprAsg                 <*  sSemi
      <|> pBlock
-     where optionalElse = option (keyword KeyElse *> pStat) (StatBlock [])
+     where
+      optionalElse = option (keyword KeyElse *> pStat) (StatBlock [])
+
+      forToWhile :: ForHeader -> Stat -> Stat
+      forToWhile ForHeader{varDec, varAsg, cond, inc} body = StatBlock [StatDecl varDec, StatExpr varAsg, StatWhile cond (StatBlock (body : map StatExpr inc))]
+
+data ForHeader = ForHeader {
+    varDec :: Decl
+  , varAsg :: Expr
+  , cond :: Expr
+  , inc :: [Expr]
+}
+
+pForHeader :: Parser Token ForHeader
+pForHeader = ForHeader <$> pDecl <* punctuation Comma <*> pExprAsg <* punctuation Semicolon <*> pExprAsg <* punctuation Semicolon <*> listOf pExprAsg (punctuation Comma)
 
 pLiteral :: Parser Token Literal
 pLiteral =  LitBool <$> sBoolLit
