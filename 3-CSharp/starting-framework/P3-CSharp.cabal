@@ -30,3 +30,4 @@ executable starting-framework
     -- invert comments for the two packages below
     -- , uu-tc >=2015
     , uu-tc-error >=0.3.0.0
+    , mtl >=2.2.2

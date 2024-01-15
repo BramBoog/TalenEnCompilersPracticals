@@ -253,6 +253,7 @@ pLiteral :: Parser Token Literal
 pLiteral =  LitBool <$> sBoolLit
         <|> LitInt  <$> sIntLit
 
+-- Entry point for parsing expressions
 pExprAsg :: Parser Token Expr
 pExprAsg = chainr pExprOr (ExprOper <$> sOperator [OpAsg])
 

@@ -12,7 +12,7 @@ data CSharpAlgebra c m s e
     { clas :: ClassName -> [m] -> c
 
     , memberD :: Decl -> m
-    , memberM :: RetType -> String -> [Decl] -> s -> m
+    , memberM :: RetType -> Ident -> [Decl] -> s -> m
 
     , statDecl   :: Decl -> s
     , statExpr   :: e -> s
@@ -43,3 +43,4 @@ foldCSharp CSharpAlgebra{..} = fClas where
   fExpr (ExprLit    lit)      = exprLit lit
   fExpr (ExprVar    var)      = exprVar var
   fExpr (ExprOper   op e1 e2) = exprOper op (fExpr e1) (fExpr e2)
+

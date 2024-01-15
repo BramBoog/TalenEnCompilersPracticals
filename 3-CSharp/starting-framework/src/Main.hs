@@ -37,6 +37,9 @@ processFile infile = do
   xs <- readFile infile
   let program = run "parser" (pClass <* eof) . run "lexer" lexicalScanner $ xs
   print program
+  let ssm = formatCode $ foldCSharp codeAlgebra program
+  writeFile outfile ssm
+  putStrLn (outfile ++ " written")
   -- case foldCSharp analysisAlgebra program of
   --   False -> error "analysis failed"
   --   True -> do
