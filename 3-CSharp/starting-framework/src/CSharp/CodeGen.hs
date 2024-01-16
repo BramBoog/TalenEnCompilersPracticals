@@ -59,8 +59,8 @@ fMembMeth t x ps s = do mapM_ fStatDecl ps -- misschien algemene functie voor ma
 
 -- TODO Controleren dat local vars ook local blijven 
 fStatDecl :: Decl -> State Env S
-fStatDecl (Decl t i) = do modify (\env -> M.insert i (M.size env) env)
-                          return []
+fStatDecl (Decl t i) = do modify (\env -> M.insert i (M.size env + 2) env)
+                          return [LDC 0]
 
 fStatExpr :: (Env -> E) -> State Env S
 fStatExpr e = state (\env -> (e env Value ++ [pop], env))

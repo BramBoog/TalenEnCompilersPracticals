@@ -1,5 +1,9 @@
 class Test {
-    void main() {
-        1+2;
-    }
+    void main()
+    {
+    int a; int b;
+    a = 3;
+    b = 4;
+    a = a + b;
+	}
 }

@@ -1,8 +1,23 @@
 	Bsr main
 	HALT
 main:
-	LDC 1
-	LDC 2
+	LDC 0
+	LDC 0
+	LDC 3
+	LDS 0
+	LDLA 2
+	STA 0
+	AJS -1
+	LDC 4
+	LDS 0
+	LDLA 3
+	STA 0
+	AJS -1
+	LDL 2
+	LDL 3
 	ADD
+	LDS 0
+	LDLA 2
+	STA 0
 	AJS -1
 	RET

@@ -260,7 +260,7 @@ pExprAsg = chainr pExprOr (ExprOper <$> sOperator [OpAsg])
 pExprOr :: Parser Token Expr
 pExprOr = chainl pExprAnd (ExprOper <$> sOperator [OpOr])
 
-pExprAnd :: Parser Token Expr
+pExprAnd :: Parser Token Expr -- logical or conditional and?
 pExprAnd = chainl pExprXor (ExprOper <$> sOperator [OpAnd])
 
 pExprXor :: Parser Token Expr
