@@ -284,7 +284,7 @@ pExprSimple =  ExprLit  <$> pLiteral
            <|> parenthesised pExprAsg
 
 pDecl :: Parser Token Decl
-pDecl = Decl <$> pRetType <*> sLowerId
+pDecl = Decl <$> pType <*> sLowerId
 
 pDeclSemi :: Parser Token Decl
 pDeclSemi = pDecl <* sSemi

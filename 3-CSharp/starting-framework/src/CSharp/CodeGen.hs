@@ -21,7 +21,18 @@ type M = Code                   -- Member
 type S = Code                   -- Statement
 type E = ValueOrAddress -> Code -- Expression
 
-type Env = M.Map Ident Int -- voor 11, maak van Int (RetType, Int)
+type Scope = M.Map Ident Int -- voor 11, maak van Int (Type, Int)
+type Env = [Scope] -- local2 : local1 : global : []
+
+{-
+1. Global variables
+2. 1 local variable
+3. 2 local variables
+4. calling global variable
+5. nested local scope
+6. calling local scope above -- put scope addresses on stack with local variables?
+7. calling global scope from nested local
+-}
 
 codeAlgebra :: CSharpAlgebra C (State Env M) (State Env S) (Env -> E)
 codeAlgebra = CSharpAlgebra
@@ -39,17 +50,18 @@ codeAlgebra = CSharpAlgebra
   fExprOp
 
 -- E --> (Env -> E)
--- M -> State Env M
+-- M --> State Env M
 -- S --> Env -> (S, Env)
 
-fClass :: ClassName -> [State Env M] -> C
-fClass c ms = let stateToRun = do ms' <- sequence ms
-                                  return ([Bsr "main", HALT] ++ concat ms')
-               in evalState stateToRun M.empty
+fClass :: ClassName -> [(State Env M, [Ident])] -> C
+fClass c ts = let (states, is) = (map fst ts, concatMap snd ts)
+                  globalScopeEnv = [M.fromList $ zip is [0..(length is)]]
+                  stateToRun = do ms <- sequence states
+                                  return ([AJS (length is), Bsr "main", HALT] ++ concat ms) -- reserve space for global vars at the bottom of the stack
+               in evalState stateToRun globalScopeEnv
 
-fMembDecl :: Decl -> State Env M
-fMembDecl (Decl t i) = do modify (\env -> M.insert i (M.size env) env)
-                          return []
+fMembDecl :: Decl -> (State Env M, [Ident])
+fMembDecl (Decl t i) = (return [], [i])
 
 fMembMeth :: RetType -> Ident -> [Decl] -> State Env S -> State Env M
 fMembMeth t x ps s = do mapM_ fStatDecl ps -- misschien algemene functie voor maken en die toepassen hier en in fStatDecl

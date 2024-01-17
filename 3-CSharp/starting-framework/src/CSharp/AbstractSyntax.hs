@@ -34,6 +34,7 @@ data Expr   -- Expressions
   | ExprOper  Operator Expr Expr
   deriving (Eq, Ord, Show)
 
+-- todo operator order (and/or)
 data Operator -- Binary operators, in descending order of priority (same line is same priority)
   = OpMul | OpDiv | OpMod 
   | OpAdd | OpSub 
@@ -45,7 +46,7 @@ data Operator -- Binary operators, in descending order of priority (same line is
   | OpAsg 
   deriving (Eq, Show, Ord, Enum, Bounded)
 
-data Decl = Decl RetType Ident  -- Variable declarations
+data Decl = Decl Type Ident  -- Variable declarations
   deriving (Eq, Ord, Show)
 
 -- (Simplified) types of C#, not including "void"
