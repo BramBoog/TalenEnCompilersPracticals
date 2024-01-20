@@ -5,7 +5,6 @@ import CSharp.AbstractSyntax
 import CSharp.Algebra
 
 import SSM
-import Control.Monad.State
 
 import Prelude hiding (LT, GT, EQ)
 import qualified Data.Map as M
@@ -34,7 +33,7 @@ type Env = [Scope] -- local2 : local1 : global : []
 7. calling global scope from nested local
 -}
 
-codeAlgebra :: CSharpAlgebra C (State Env M) (State Env S) (Env -> E)
+codeAlgebra :: CSharpAlgebra C (Env -> M, [Ident]) (Env -> S, [Ident]) (Env -> E)
 codeAlgebra = CSharpAlgebra
   fClass
   fMembDecl
@@ -50,68 +49,81 @@ codeAlgebra = CSharpAlgebra
   fExprOp
 
 -- E --> (Env -> E)
--- M --> State Env M
--- S --> Env -> (S, Env)
+-- M --> (Env -> M)
+-- S --> (Env -> S)
 
-fClass :: ClassName -> [(State Env M, [Ident])] -> C
-fClass c ts = let (states, is) = (map fst ts, concatMap snd ts)
-                  globalScopeEnv = [M.fromList $ zip is [0..(length is)]]
-                  stateToRun = do ms <- sequence states
-                                  return ([AJS (length is), Bsr "main", HALT] ++ concat ms) -- reserve space for global vars at the bottom of the stack
-               in evalState stateToRun globalScopeEnv
+fClass :: ClassName -> [(Env -> M, [Ident])] -> C
+fClass c ts = let (fs, is) = (map fst ts, concatMap snd ts)
+                  globalScopeEnv = [M.fromList $ zip is [0..(length is - 1)]] -- allocate an address to each declared global var
+                  code = concatMap ($ globalScopeEnv) fs
+               in [AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack
+                  
+fMembDecl :: Decl -> (Env -> M, [Ident])
+fMembDecl (Decl t i) = (const [], [i])
 
-fMembDecl :: Decl -> (State Env M, [Ident])
-fMembDecl (Decl t i) = (return [], [i])
+fMembMeth :: RetType -> Ident -> [Decl] -> (Env -> S, [Ident]) -> (Env -> M, [Ident])
+fMembMeth t x ps s = (\env -> [LABEL x] ++ fst s env ++ [RET], [])
 
-fMembMeth :: RetType -> Ident -> [Decl] -> State Env S -> State Env M
-fMembMeth t x ps s = do mapM_ fStatDecl ps -- misschien algemene functie voor maken en die toepassen hier en in fStatDecl
-                        s' <- s
-                        return ([LABEL x] ++ s' ++ [RET])
-                        -- misschien parameters weer uit de env met modify?
+fStatDecl :: Decl -> (Env -> S, [Ident])
+fStatDecl (Decl t i) = (const [], [i])
 
--- TODO Controleren dat local vars ook local blijven 
-fStatDecl :: Decl -> State Env S
-fStatDecl (Decl t i) = do modify (\env -> M.insert i (M.size env + 2) env)
-                          return [LDC 0]
+fStatExpr :: (Env -> E) -> (Env -> S, [Ident])
+fStatExpr e = (\env -> e env Value ++ [pop], [])
 
-fStatExpr :: (Env -> E) -> State Env S
-fStatExpr e = state (\env -> (e env Value ++ [pop], env))
+fStatIf :: (Env -> E) -> (Env -> S, [Ident]) -> (Env -> S, [Ident]) -> (Env -> S, [Ident])
+fStatIf e st sf = (\env -> c env ++ [BRF (nt env + 2)] ++ tb env ++ [BRA (nf env)] ++ fb env, [])
+  where
+    tb      = fst st
+    fb      = fst sf
+    c env'  = e env' Value
+    nt env' = codeSize $ tb env'
+    nf env' = codeSize $ fb env'
 
-fStatIf :: (Env -> E) -> State Env S -> State Env S -> State Env S
-fStatIf e s1 s2 = do env <- get
-                     s1' <- s1
-                     s2' <- s2
-                     let c        = e env Value
-                         (n1, n2) = (codeSize s1', codeSize s2')
-                     return (c ++ [BRF (n1 + 2)] ++ s1' ++ [BRA n2] ++ s2')
+fStatWhile :: (Env -> E) -> (Env -> S, [Ident]) -> (Env -> S, [Ident])
+fStatWhile e s = (\env -> [BRA (n env)] ++ b env ++ c env ++ [BRT (-(n env + k env + 2))], [])
+  where
+    b      = fst s
+    c env' = e env' Value
+    n env' = codeSize $ b env'
+    k env' = codeSize $ c env'
 
-fStatWhile :: (Env -> E) -> State Env S -> State Env S
-fStatWhile e s1 = do env <- get 
-                     s1' <- s1
-                     let c = e env Value
-                         (n, k) = (codeSize s1', codeSize c)
-                     return ([BRA n] ++ s1' ++ c ++ [BRT (-(n + k + 2))])
+fStatReturn :: (Env -> E) -> (Env -> S, [Ident])
+fStatReturn e = (\env -> e env Value ++ [pop] ++ [RET], [])
 
-fStatReturn :: (Env -> E) -> State Env S
-fStatReturn e = state (\env -> (e env Value ++ [pop, RET], env))
-
-fStatBlock :: [State Env S] -> State Env S
-fStatBlock = fmap concat . sequence
+fStatBlock :: [(Env -> S, [Ident])] -> (Env -> S, [Ident])
+fStatBlock ts = let (fs, is) = (map fst ts, concatMap snd ts)
+                    initLocalScope = [LDR MP, LDRR MP SP, AJS (length is)] -- mark pointer points to adress of previous scope, reserve space for local vars
+                    returnToPrevScope = [LDRR SP MP, STR MP]
+                    localScope = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the adress of the previous scope
+                 in (\env -> initLocalScope ++ concatMap ($ (localScope : env)) fs ++ returnToPrevScope, [])
 
 fExprLit :: Literal -> (Env -> E)
-fExprLit l va env = [LDC n] where
+fExprLit l env va = [LDC n] where
   n = case l of
     LitInt n -> n
     LitBool b -> bool2int b
 
-fExprVar :: Ident -> (Env -> E)
-fExprVar x env va = case va of
-    Value   ->  [LDL  loc]
-    Address ->  [LDLA loc]
-  where loc = env M.! x
+fExprVar :: Ident -> Env -> E
+fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss)
+                             loadValueOrAddress
+                             (M.lookup x s)
+  where
+    loadValueOrAddress loc = case va of
+      Value   ->  [LDL  loc]
+      Address ->  [LDLA loc]
+
+    loadFromPrevScopes :: Env -> Code
+    loadFromPrevScopes (ps:pss) = maybe (LDA 0 : loadFromPrevScopes pss)
+                                        loadValueOrAddress'
+                                        (M.lookup x ps)
+      where
+        loadValueOrAddress' loc = case va of
+          Value   ->  [LDA  loc]
+          Address ->  [LDAA loc]
+        
 
 fExprOp :: Operator -> (Env -> E) -> (Env -> E) -> (Env -> E)
-fExprOp OpAsg e1 e2 env va = e2 env Value ++ [LDS 0] ++ e1 env Address ++ [STA 0]
+fExprOp OpAsg e1 e2 env va = e2 env Value ++ [LDS 0] ++ e1 env Address ++ [STA 0] -- moet rekening houden met scoping
 fExprOp op    e1 e2 env va = e1 env Value ++ e2 env Value ++ [
    case op of
     { OpAdd -> ADD; OpSub -> SUB; OpMul -> MUL; OpDiv -> DIV;
