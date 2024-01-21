@@ -258,13 +258,13 @@ pExprAsg :: Parser Token Expr
 pExprAsg = chainr pExprOr (ExprOper <$> sOperator [OpAsg])
 
 pExprOr :: Parser Token Expr
-pExprOr = chainl pExprAnd (ExprOper <$> sOperator [OpOr])
-
-pExprAnd :: Parser Token Expr -- logical or conditional and?
-pExprAnd = chainl pExprXor (ExprOper <$> sOperator [OpAnd])
+pExprOr = chainl pExprXor (ExprOper <$> sOperator [OpOr])
 
 pExprXor :: Parser Token Expr
-pExprXor = chainl pExprEqNeq (ExprOper <$> sOperator [OpXor])
+pExprXor = chainl pExprAnd (ExprOper <$> sOperator [OpXor])
+
+pExprAnd :: Parser Token Expr 
+pExprAnd = chainl pExprEqNeq (ExprOper <$> sOperator [OpAnd])
 
 pExprEqNeq :: Parser Token Expr
 pExprEqNeq = chainl pExprLeqLtGeqGt (ExprOper <$> sOperator [OpEq, OpNeq])
@@ -282,6 +282,7 @@ pExprSimple :: Parser Token Expr
 pExprSimple =  ExprLit  <$> pLiteral
            <|> ExprVar  <$> sLowerId
            <|> parenthesised pExprAsg
+           <|> ExprMeth <$> sLowerId <*> parenthesised (listOf pExprAsg (punctuation Comma))
 
 pDecl :: Parser Token Decl
 pDecl = Decl <$> pType <*> sLowerId

@@ -32,6 +32,7 @@ data Expr   -- Expressions
   = ExprLit   Literal
   | ExprVar   Ident
   | ExprOper  Operator Expr Expr
+  | ExprMeth  Ident [Expr]
   deriving (Eq, Ord, Show)
 
 -- todo operator order (and/or)
@@ -39,9 +40,9 @@ data Operator -- Binary operators, in descending order of priority (same line is
   = OpMul | OpDiv | OpMod 
   | OpAdd | OpSub 
   | OpLeq | OpLt | OpGeq | OpGt
-  | OpEq  | OpNeq 
+  | OpEq  | OpNeq
+  | OpAnd  
   | OpXor 
-  | OpAnd 
   | OpOr 
   | OpAsg 
   deriving (Eq, Show, Ord, Enum, Bounded)
