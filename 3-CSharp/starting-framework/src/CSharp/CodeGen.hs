@@ -51,8 +51,23 @@ fMembDecl :: Decl -> (Env -> M, [Ident])
 fMembDecl (Decl t i) = (const [], [i])
 
 fMembMeth :: RetType -> Ident -> [Decl] -> (Env -> S, [Ident]) -> (Env -> M, [Ident])
-fMembMeth t x ps s = (\env -> [LABEL x] ++ fst s env ++ [RET], [])
-
+fMembMeth rt x ps sb = (go, [])
+  where
+    go env = let is = map (\(Decl t i) -> i) ps
+                 nParam = length is
+                 -- Method parameters are found from -2 downward relative to the MP when it is placed on the method local scope,
+                 -- since -1 is always occupied by the return address originating from the method call
+                 envWithParams = M.fromList (zip is [-(nParam + 1)..(-2)]) : removeLocalVars env
+              in [LABEL x] ++ fst sb envWithParams ++ [STS (-nParam), AJS (-(nParam - 1)), RET]
+      where
+        -- A method body cannot refer to variables from the local scope the method is called in, only "global" class members.
+        -- So we need to remove variables from the local scopes when entering the method body,
+        -- while retaining a way to jump back to the "global" scope across all the local scopes in between.
+        -- Therefore, we keep the 0th element of each local scope, since this is the adress of the scope before (see fExprVar)
+        removeLocalVars :: Env -> Env
+        removeLocalVars [s] = [s]
+        removeLocalVars (s:ss) = M.filter (/= 0) s : removeLocalVars ss
+              
 fStatDecl :: Decl -> (Env -> S, [Ident])
 fStatDecl (Decl t i) = (const [], [i])
 
@@ -80,11 +95,19 @@ fStatReturn :: (Env -> E) -> (Env -> S, [Ident])
 fStatReturn e = (\env -> e env Value ++ [pop] ++ [RET], [])
 
 fStatBlock :: [(Env -> S, [Ident])] -> (Env -> S, [Ident])
-fStatBlock ts = let (fs, is) = (map fst ts, concatMap snd ts) -- statblock creates a local scope
-                    initLocalScope = [LDR MP, LDRR MP SP, AJS (length is)] -- let MP point to adress of previous scope, reserve space for local vars
-                    returnToPrevScope = [LDRR SP MP, STR MP]
-                    localScope = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the adress of the previous scope
-                 in (\env -> initLocalScope ++ concatMap ($ (localScope : env)) fs ++ returnToPrevScope, [])
+fStatBlock ts = (go, [])
+  where
+    go env = let (fs, is) = (map fst ts, concatMap snd ts)
+                 initLocalScope = [LDR MP, LDRR MP SP, AJS (length is)] -- let MP point to address of previous scope, reserve space for local vars
+                 returnToPrevScope = [LDRR SP MP, STR MP]
+                 localScope = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the address of the previous scope
+                 -- Statblock creates a new local scope;
+                 -- however, if we're in a method body, we've already been supplied a partial local scope with space for the method parameters in fMembMeth.
+                 -- So if that's the case, we need to amend the first local scope in env, not create a new one
+                 newEnv = if (not . null) (M.filter (< 0) (head env)) -- Method calls have their parameters on negative adresses in a partial local scope
+                            then M.union (head env) localScope : tail env
+                            else localScope : env
+              in initLocalScope ++ concatMap ($ newEnv) fs ++ returnToPrevScope
 
 fExprLit :: Literal -> (Env -> E)
 fExprLit l env va = [LDC n] where
@@ -114,7 +137,7 @@ fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope,
 
 fExprOp :: Operator -> (Env -> E) -> (Env -> E) -> (Env -> E)
 fExprOp OpAsg e1 e2 env va = e2 env Value ++ [LDS 0] ++ e1 env Address ++ [STA 0]
--- Shortcutting via BRF/BRT
+-- Shortcutting/lazy evaluation via BRF/BRT
 -- Since BRF/BRT consumes it, add the first bool an extra time to the stack, so it still remains after BRF/BRT for its original use
 fExprOp OpAnd e1 e2 env va = e1 env Value ++ [LDS 0, BRF (codeSize (e2 env Value) + 1)] ++ e2 env Value ++ [AND]
 fExprOp OpOr  e1 e2 env va = e1 env Value ++ [LDS 0, BRT (codeSize (e2 env Value) + 1)] ++ e2 env Value ++ [OR]
@@ -130,7 +153,7 @@ fExprOp op    e1 e2 env va = e1 env Value ++ e2 env Value ++ [
 
 fExprMeth :: Ident -> [Env -> E] -> Env -> E
 fExprMeth "print" es env va = intercalate [TRAP 0] (map (\e -> e env Value) es) ++ [TRAP 0]
-fExprMeth i es env va = undefined
+fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [Bsr i]
 
 -- | Whether we are computing the value of a variable, or a pointer to it
 data ValueOrAddress = Value | Address

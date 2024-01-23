@@ -1,0 +1,19 @@
+	AJS 1
+	Bsr main
+	HALT
+main:
+	LDR MP
+	LDRR MP SP
+	AJS 0
+	LDC 3
+	LDS 0
+	LDL 0
+	LDA 0
+	LDAA 1
+	STA 0
+	AJS -1
+	LDRR SP MP
+	STR MP
+	STS 0
+	AJS 1
+	RET

@@ -1,8 +1,17 @@
 class Test {
-    int d(int a, int b){}
+    int c;
+
+    // int d(int a, int b){
+    //     a + b + c;
+    // }
 
     void main()
     {
-        d(1, 2);
+        c = 3;
+        // for(int i, i = 0; i < 5; i = i + 1){
+        //     int c;
+        //     c = 8;
+        //     d(i, 1);
+        // }
 	}
 }
