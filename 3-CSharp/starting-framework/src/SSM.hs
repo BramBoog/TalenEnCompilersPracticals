@@ -1,7 +1,7 @@
 module SSM where
 
 -- Registers
-data Reg = PC | SP | MP | R3 | R4 | R5 | R6 | R7
+data Reg = PC | SP | MP | R3 | RR | R5 | R6 | R7
    deriving Show
 
 r0, r1, r2, r3, r4, r5, r6, r7 :: Reg
@@ -9,7 +9,7 @@ r0 = PC -- Program Counter
 r1 = SP -- Stack Pointer
 r2 = MP -- Mark Pointer
 r3 = R3
-r4 = R4
+r4 = RR
 r5 = R5
 r6 = R6
 r7 = R7

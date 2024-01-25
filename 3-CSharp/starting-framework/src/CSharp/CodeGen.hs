@@ -17,16 +17,16 @@ import Debug.Trace (trace)
 
 -- The types that we generate for each datatype: our type variables for the algebra.
 -- Change these definitions instead of the function signatures to get better type errors.
-type C = Code                   -- Class
-type M = Code                   -- Member
-type S = Code                   -- Statement
-type E = ValueOrAddress -> Code -- Expression
+type C = Code                          -- Class
+type M = (Env -> Code, [Ident])        -- Member
+type S = (Env -> Code, [Ident])        -- Statement
+type E = Env -> ValueOrAddress -> Code -- Expression
 
 data ScopeType = Normal | OnlyMethodParams deriving (Eq, Show)
 data Scope = Scope{scopeType :: ScopeType, scopeContent :: M.Map Ident Int} deriving Show -- voor 11, maak van Int (Type, Int)
 type Env = [Scope] -- local2 : local1 : global : []
 
-codeAlgebra :: CSharpAlgebra C (Env -> M, [Ident]) (Env -> S, [Ident]) (Env -> E)
+codeAlgebra :: CSharpAlgebra C M S E
 codeAlgebra = CSharpAlgebra
   fClass
   fMembDecl
@@ -42,17 +42,17 @@ codeAlgebra = CSharpAlgebra
   fExprOp
   fExprMeth
 
-fClass :: ClassName -> [(Env -> M, [Ident])] -> C
+fClass :: ClassName -> [M] -> C
 fClass c ts = let (fs, is) = (map fst ts, concatMap snd ts)
                   -- allocate an address to each declared global var, skipping the "dummy" starting position 0 of the MP
                   globalScopeEnv = [Scope Normal (M.fromList $ zip is [1..(length is)])]
                   code = concatMap ($ globalScopeEnv) fs
-               in [LDC (-1), STR R3, AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack first
+               in [AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack first
 
-fMembDecl :: Decl -> (Env -> M, [Ident])
+fMembDecl :: Decl -> M
 fMembDecl (Decl t i) = (const [], [i])
 
-fMembMeth :: RetType -> Ident -> [Decl] -> (Env -> S, [Ident]) -> (Env -> M, [Ident])
+fMembMeth :: RetType -> Ident -> [Decl] -> S -> M
 fMembMeth rt x ps sb = (go, [])
   where
     go env = let is = map (\(Decl t i) -> i) ps
@@ -70,13 +70,13 @@ fMembMeth rt x ps sb = (go, [])
         -- removeLocalVars [s] = [s]
         -- removeLocalVars (Scope t s : ss) = Scope t M.empty : removeLocalVars ss
 
-fStatDecl :: Decl -> (Env -> S, [Ident])
+fStatDecl :: Decl -> S
 fStatDecl (Decl t i) = (const [], [i])
 
-fStatExpr :: (Env -> E) -> (Env -> S, [Ident])
+fStatExpr :: E -> S
 fStatExpr e = (\env -> e env Value ++ [pop], [])
 
-fStatIf :: (Env -> E) -> (Env -> S, [Ident]) -> (Env -> S, [Ident]) -> (Env -> S, [Ident])
+fStatIf :: E -> S -> S -> S
 fStatIf e st sf = (\env -> c env ++ [BRF (nt env + 2)] ++ tb env ++ [BRA (nf env)] ++ fb env, [])
   where
     tb      = fst st
@@ -85,7 +85,7 @@ fStatIf e st sf = (\env -> c env ++ [BRF (nt env + 2)] ++ tb env ++ [BRA (nf env
     nt env' = codeSize $ tb env'
     nf env' = codeSize $ fb env'
 
-fStatWhile :: (Env -> E) -> (Env -> S, [Ident]) -> (Env -> S, [Ident])
+fStatWhile :: E -> S -> S
 fStatWhile e s = (\env -> [BRA (n env)] ++ b env ++ c env ++ [BRT (-(n env + k env + 2))], [])
   where
     b      = fst s
@@ -93,10 +93,10 @@ fStatWhile e s = (\env -> [BRA (n env)] ++ b env ++ c env ++ [BRT (-(n env + k e
     n env' = codeSize $ b env'
     k env' = codeSize $ c env'
 
-fStatReturn :: (Env -> E) -> (Env -> S, [Ident])
-fStatReturn e = (\env -> e env Value ++ [pop] ++ [RET], [])
+fStatReturn :: E -> S
+fStatReturn e = (\env -> e env Value ++ [STR RR], [])
 
-fStatBlock :: [(Env -> S, [Ident])] -> (Env -> S, [Ident])
+fStatBlock :: [S] -> S
 fStatBlock ts = (go, [])
   where
     go env = let (fs, is) = (map fst ts, concatMap snd ts)
@@ -111,13 +111,13 @@ fStatBlock ts = (go, [])
                             _                -> Scope Normal localScopeContent : env
               in initLocalScope ++ concatMap ($ newEnv) fs ++ returnToPrevScope
 
-fExprLit :: Literal -> (Env -> E)
+fExprLit :: Literal -> E
 fExprLit l env va = [LDC n] where
   n = case l of
     LitInt n -> n
     LitBool b -> bool2int b
 
-fExprVar :: Ident -> Env -> E
+fExprVar :: Ident -> E
 fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope, check if var in current scope, else go back one scope (by loading its address)
                              loadValueOrAddress
                              (M.lookup x (scopeContent s))
@@ -129,6 +129,7 @@ fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope,
     -- we always start this code block with SP pointing to the address of the scope previous to the one we just checked
     -- check if var is in said previous scope, else load address of scope before (which sits on place 0 of previous scope), and try again
     loadFromPrevScopes :: Env -> Code
+    loadFromPrevScopes []       = error ("Compile error:\nReference to undefined variable: " ++ x)
     loadFromPrevScopes (ps:pss) = maybe (LDA 0 : loadFromPrevScopes pss)
                                         loadValueOrAddress'
                                         (M.lookup x (scopeContent ps))
@@ -137,7 +138,7 @@ fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope,
           Value   ->  [LDA  loc]
           Address ->  [LDAA loc]
 
-fExprOp :: Operator -> (Env -> E) -> (Env -> E) -> (Env -> E)
+fExprOp :: Operator -> E -> E -> E
 fExprOp OpAsg e1 e2 env va = e2 env Value ++ [LDS 0] ++ e1 env Address ++ [STA 0]
 -- Shortcutting/lazy evaluation via BRF/BRT
 -- Since BRF/BRT consumes it, add the first bool an extra time to the stack, so it still remains after BRF/BRT for its original use
@@ -153,9 +154,9 @@ fExprOp op    e1 e2 env va = e1 env Value ++ e2 env Value ++ [
     ; OpEq  -> EQ; OpNeq -> NE;}
   ]
 
-fExprMeth :: Ident -> [Env -> E] -> Env -> E
+fExprMeth :: Ident -> [E] -> E
 fExprMeth "print" es env va = intercalate [TRAP 0] (map (\e -> e env Value) es) ++ [TRAP 0]
-fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [LDC (length env - 1), STR R3, Bsr i]
+fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [Bsr i, LDR RR]
 
 -- | Whether we are computing the value of a variable, or a pointer to it
 data ValueOrAddress = Value | Address
