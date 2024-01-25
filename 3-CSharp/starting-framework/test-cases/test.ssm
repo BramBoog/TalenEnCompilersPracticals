@@ -1,19 +1,55 @@
+	LDC -1
+	STR R3
 	AJS 1
 	Bsr main
 	HALT
+d:
+	LINK 0
+	LDL -3
+	LDL -2
+	ADD
+	TRAP 0
+	AJS -1
+	UNLINK
+	STS -2
+	AJS -1
+	RET
 main:
-	LDR MP
-	LDRR MP SP
-	AJS 0
-	LDC 3
+	LINK 0
+	LINK 1
+	LDC 0
 	LDS 0
+	LDLA 1
+	STA 0
+	AJS -1
+	BRA 39
+	LINK 0
+	LINK 0
 	LDL 0
 	LDA 0
+	LDA 1
+	LDC 1
+	LDC 4
+	STR R3
+	Bsr d
+	AJS -1
+	UNLINK
+	LDL 0
+	LDA 1
+	LDC 1
+	ADD
+	LDS 0
+	LDL 0
 	LDAA 1
 	STA 0
 	AJS -1
-	LDRR SP MP
-	STR MP
+	UNLINK
+	LDL 1
+	LDC 5
+	LT
+	BRT -46
+	UNLINK
+	UNLINK
 	STS 0
 	AJS 1
 	RET

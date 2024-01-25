@@ -128,8 +128,7 @@ data Token  -- What the lexer returns
 
 -- Entry point for the lexer
 lexicalScanner :: Parser Char [Token]
-lexicalScanner = lexWhiteSpace *> greedy (lexToken <* lexWhiteSpace <* optional (greedy (lexComment <* lexWhiteSpace)) <* lexWhiteSpace) <* eof
--- greedy van iets wat geen input neemt?
+lexicalScanner = lexWhiteSpace *> greedy (lexToken <* lexWhiteSpace <* greedy (lexComment <* lexWhiteSpace)) <* eof
 
 lexToken :: Parser Char Token
 lexToken = greedyChoice

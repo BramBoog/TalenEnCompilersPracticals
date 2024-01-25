@@ -9,6 +9,7 @@ import SSM
 import Prelude hiding (LT, GT, EQ)
 import qualified Data.Map as M
 import Data.List (intercalate)
+import Debug.Trace (trace)
 
 {-
   This file contains a starting point for the code generation.
@@ -21,7 +22,8 @@ type M = Code                   -- Member
 type S = Code                   -- Statement
 type E = ValueOrAddress -> Code -- Expression
 
-type Scope = M.Map Ident Int -- voor 11, maak van Int (Type, Int)
+data ScopeType = Normal | OnlyMethodParams deriving (Eq, Show)
+data Scope = Scope{scopeType :: ScopeType, scopeContent :: M.Map Ident Int} deriving Show -- voor 11, maak van Int (Type, Int)
 type Env = [Scope] -- local2 : local1 : global : []
 
 codeAlgebra :: CSharpAlgebra C (Env -> M, [Ident]) (Env -> S, [Ident]) (Env -> E)
@@ -43,9 +45,9 @@ codeAlgebra = CSharpAlgebra
 fClass :: ClassName -> [(Env -> M, [Ident])] -> C
 fClass c ts = let (fs, is) = (map fst ts, concatMap snd ts)
                   -- allocate an address to each declared global var, skipping the "dummy" starting position 0 of the MP
-                  globalScopeEnv = [M.fromList $ zip is [1..(length is)]]
+                  globalScopeEnv = [Scope Normal (M.fromList $ zip is [1..(length is)])]
                   code = concatMap ($ globalScopeEnv) fs
-               in [AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack first
+               in [LDC (-1), STR R3, AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack first
 
 fMembDecl :: Decl -> (Env -> M, [Ident])
 fMembDecl (Decl t i) = (const [], [i])
@@ -57,17 +59,17 @@ fMembMeth rt x ps sb = (go, [])
                  nParam = length is
                  -- Method parameters are found from -2 downward relative to the MP when it is placed on the method local scope,
                  -- since -1 is always occupied by the return address originating from the method call
-                 envWithParams = M.fromList (zip is [-(nParam + 1)..(-2)]) : removeLocalVars env
+                 envWithParams = Scope OnlyMethodParams (M.fromList (zip is [-(nParam + 1)..(-2)])) : env
               in [LABEL x] ++ fst sb envWithParams ++ [STS (-nParam), AJS (-(nParam - 1)), RET]
-      where
-        -- A method body cannot refer to variables from the local scope the method is called in, only "global" class members.
-        -- So we need to remove variables from the local scopes when entering the method body,
-        -- while retaining a way to jump back to the "global" scope across all the local scopes in between.
-        -- Therefore, we keep the 0th element of each local scope, since this is the adress of the scope before (see fExprVar)
-        removeLocalVars :: Env -> Env
-        removeLocalVars [s] = [s]
-        removeLocalVars (s:ss) = M.filter (/= 0) s : removeLocalVars ss
-              
+      -- where
+        -- -- A method body cannot refer to variables from the local scope the method is called in, only "global" class members.
+        -- -- So we need to remove variables from the local scopes when entering the method body,
+        -- -- while retaining a way to jump back to the "global" scope across all the local scopes in between.
+        -- -- Therefore, we keep the 0th element of each local scope, since this is the adress of the scope before (see fExprVar)
+        -- removeLocalVars :: Env -> Env
+        -- removeLocalVars [s] = [s]
+        -- removeLocalVars (Scope t s : ss) = Scope t M.empty : removeLocalVars ss
+
 fStatDecl :: Decl -> (Env -> S, [Ident])
 fStatDecl (Decl t i) = (const [], [i])
 
@@ -98,15 +100,15 @@ fStatBlock :: [(Env -> S, [Ident])] -> (Env -> S, [Ident])
 fStatBlock ts = (go, [])
   where
     go env = let (fs, is) = (map fst ts, concatMap snd ts)
-                 initLocalScope = [LDR MP, LDRR MP SP, AJS (length is)] -- let MP point to address of previous scope, reserve space for local vars
-                 returnToPrevScope = [LDRR SP MP, STR MP]
-                 localScope = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the address of the previous scope
+                 initLocalScope = [LINK (length is)] -- let MP point to address of previous scope, reserve space for local vars
+                 returnToPrevScope = [UNLINK]
+                 localScopeContent = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the address of the previous scope
                  -- Statblock creates a new local scope;
                  -- however, if we're in a method body, we've already been supplied a partial local scope with space for the method parameters in fMembMeth.
                  -- So if that's the case, we need to amend the first local scope in env, not create a new one
-                 newEnv = if (not . null) (M.filter (< 0) (head env)) -- Method calls have their parameters on negative adresses in a partial local scope
-                            then M.union (head env) localScope : tail env
-                            else localScope : env
+                 newEnv = case scopeType (head env) of
+                            OnlyMethodParams -> Scope Normal (M.union (scopeContent (head env)) localScopeContent) : tail env
+                            _                -> Scope Normal localScopeContent : env
               in initLocalScope ++ concatMap ($ newEnv) fs ++ returnToPrevScope
 
 fExprLit :: Literal -> (Env -> E)
@@ -118,7 +120,7 @@ fExprLit l env va = [LDC n] where
 fExprVar :: Ident -> Env -> E
 fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope, check if var in current scope, else go back one scope (by loading its address)
                              loadValueOrAddress
-                             (M.lookup x s)
+                             (M.lookup x (scopeContent s))
   where
     loadValueOrAddress loc = case va of -- loading from current scope is done by loading from MP
       Value   ->  [LDL  loc]
@@ -129,7 +131,7 @@ fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope,
     loadFromPrevScopes :: Env -> Code
     loadFromPrevScopes (ps:pss) = maybe (LDA 0 : loadFromPrevScopes pss)
                                         loadValueOrAddress'
-                                        (M.lookup x ps)
+                                        (M.lookup x (scopeContent ps))
       where
         loadValueOrAddress' loc = case va of -- loading from previous scope is always done by loading via an address
           Value   ->  [LDA  loc]
@@ -153,7 +155,7 @@ fExprOp op    e1 e2 env va = e1 env Value ++ e2 env Value ++ [
 
 fExprMeth :: Ident -> [Env -> E] -> Env -> E
 fExprMeth "print" es env va = intercalate [TRAP 0] (map (\e -> e env Value) es) ++ [TRAP 0]
-fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [Bsr i]
+fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [LDC (length env - 1), STR R3, Bsr i]
 
 -- | Whether we are computing the value of a variable, or a pointer to it
 data ValueOrAddress = Value | Address
