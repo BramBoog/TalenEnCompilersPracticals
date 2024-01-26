@@ -1,3 +1,86 @@
+# Notes by students
+## Documentation on compiler errors
+### Scope checking
+In this implementation, we consider scope-checking by giving an error when a variable is called but not declared, as was asked by exercise 11. For example, when an undeclared variable 'c' is called, the following error is given:
+
+`Reference to undeclared variable: c`
+
+### Type checking
+Exercise 12 asks to type-check all variable assignments. These errors take the form of:
+
+`Cannot assign variable due to type mismatch; declared type t does not match u`
+
+where `t` and `u` are either `void`, `bool` or `int`.
+We have distinguished four cases:
+- literal assignment, e.g., `x = 1` or `x = true`
+- variable-to-variable assignment, e.g., `x = y`
+- assignment of a method result, e.g., `x = f(y)`
+- assignment of an operator result, e.g., `x = y + z` or `x = y && z`
+
+The first three are straighforward, by comparing the declared type of `x` to the type of the literal, or to the type of the variable or return type of the method, which are recorded in an environment.
+
+The fourth is different; here we infer the type of the expression after `=` by the operator used, and we ignore the types of the subexpressions, since the question does not cover type-checking operators. For example,
+```csharp
+int x;
+x = 1 + true;
+```
+type checks, since `+` tells us that the expression is of type `int`, which is also the declared type of `x`.
+
+This has the additional effect that the type of the expression is determined by the lowest-priority operator in said expression. So for example
+```csharp
+int x;
+x = 1 + 2 && true;
+```
+would result in the type error `Cannot assign variable due to type mismatch; declared type int does not match bool`. However,
+```csharp
+bool x;
+x = 1 + 2 && true;
+```
+*does* type-check, since the whole expression is determined to be of type `bool` by the lowest-priority operator `&&`.
+
+A special case here is the `=` operator; a (sub)expression built from this operator is given the type that the left-hand side (which is a variable name) has been declared to be. So for example:
+```csharp
+int x;
+int y;
+x = y = 2 + 3;
+```
+type checks, but
+```csharp
+int x;
+bool y;
+x = y = true && false;
+```
+does not.
+
+#### Interaction with scope checking
+Since we perform both scope and type checking in one pass over the AST, there is some interaction between scope and type checking; namely, when an expression produces a scope error, the question arises how to perform any type checks on this expression and any expressions containing it. In this case, we return `Nothing` for the type of the expression, collecting the scope error, but foregoing any type checks on it. This in turn means that any (outer) type checks depending on the type of the expression failing the scope check are also not performed.
+
+## Global Variables
+In this implementation, we have implemented global variables to a certain degree, i.e., everything works as expected when referring to a global variable in the `main` method. However, a global variable is not usable in any method that is not `main`. So for example:
+```csharp
+class Test {
+    int a;
+    void main(){
+        a = 2;
+    }
+}
+```
+works, but
+```csharp
+class Test {
+    int a;
+
+    void main(){
+        method();
+    }
+    
+    int method() {
+     a = 2;
+    }
+}
+```
+does not.
+
 # B3TC Lab 3
 
 This directory contains a compiler for a subset of C#.

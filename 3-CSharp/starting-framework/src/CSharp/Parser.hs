@@ -253,7 +253,7 @@ pLiteral :: Parser Token Literal
 pLiteral =  LitBool <$> sBoolLit
         <|> LitInt  <$> sIntLit
 
--- Entry point for parsing expressions
+-- Entry point for parsing expressions, since the = operator has the lowest priority
 pExprAsg :: Parser Token Expr
 pExprAsg = chainr pExprOr (ExprOper <$> sOperator [OpAsg])
 

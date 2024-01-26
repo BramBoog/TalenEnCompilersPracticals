@@ -1,4 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module CSharp.CodeGen where
 
 import CSharp.AbstractSyntax
@@ -9,7 +10,6 @@ import SSM
 import Prelude hiding (LT, GT, EQ)
 import qualified Data.Map as M
 import Data.List (intercalate)
-import Debug.Trace (trace)
 
 {-
   This file contains a starting point for the code generation.
@@ -22,9 +22,11 @@ type M = (Env -> Code, [Ident])        -- Member
 type S = (Env -> Code, [Ident])        -- Statement
 type E = Env -> ValueOrAddress -> Code -- Expression
 
-data ScopeType = Normal | OnlyMethodParams deriving (Eq, Show)
-data Scope = Scope{scopeType :: ScopeType, scopeContent :: M.Map Ident Int} deriving Show -- voor 11, maak van Int (Type, Int)
-type Env = [Scope] -- local2 : local1 : global : []
+data ScopeType = Normal | Method | OnlyMethodParams deriving (Eq, Show)
+data Scope = Scope{ scopeType :: ScopeType
+                  , scopeContent :: M.Map Ident Int
+                  } deriving Show
+type Env = [Scope] -- The list of scopes has the following structure, local2 : local1 : global : []
 
 codeAlgebra :: CSharpAlgebra C M S E
 codeAlgebra = CSharpAlgebra
@@ -44,7 +46,8 @@ codeAlgebra = CSharpAlgebra
 
 fClass :: ClassName -> [M] -> C
 fClass c ts = let (fs, is) = (map fst ts, concatMap snd ts)
-                  -- allocate an address to each declared global var, skipping the "dummy" starting position 0 of the MP
+                  -- Allocate an address on the stack to each declared global (= class level) var, skipping the "dummy" starting position 0 of the MP
+                  -- This means an environment is never empty, since there's always the (possibly itself empty) global scope
                   globalScopeEnv = [Scope Normal (M.fromList $ zip is [1..(length is)])]
                   code = concatMap ($ globalScopeEnv) fs
                in [AJS (length is), Bsr "main", HALT] ++ code -- reserve space for global vars at the bottom of the stack first
@@ -57,18 +60,12 @@ fMembMeth rt x ps sb = (go, [])
   where
     go env = let is = map (\(Decl t i) -> i) ps
                  nParam = length is
+                 -- Initialize a local scope for the method body, to which we can already add the method parameters;
+                 -- any local vars declared in the method body, which is a StatBlock, are added to this scope by fStatBlock.
                  -- Method parameters are found from -2 downward relative to the MP when it is placed on the method local scope,
-                 -- since -1 is always occupied by the return address originating from the method call
-                 envWithParams = Scope OnlyMethodParams (M.fromList (zip is [-(nParam + 1)..(-2)])) : env
-              in [LABEL x] ++ fst sb envWithParams ++ [STS (-nParam), AJS (-(nParam - 1)), RET]
-      -- where
-        -- -- A method body cannot refer to variables from the local scope the method is called in, only "global" class members.
-        -- -- So we need to remove variables from the local scopes when entering the method body,
-        -- -- while retaining a way to jump back to the "global" scope across all the local scopes in between.
-        -- -- Therefore, we keep the 0th element of each local scope, since this is the adress of the scope before (see fExprVar)
-        -- removeLocalVars :: Env -> Env
-        -- removeLocalVars [s] = [s]
-        -- removeLocalVars (Scope t s : ss) = Scope t M.empty : removeLocalVars ss
+                 -- since -1 is always occupied by the return address originating from the method call.
+                 envWithParams = Scope OnlyMethodParams (M.fromList $ zip is [-(nParam + 1)..(-2)]) : env
+              in [LABEL x] ++ fst sb envWithParams ++ returnFromMethod nParam
 
 fStatDecl :: Decl -> S
 fStatDecl (Decl t i) = (const [], [i])
@@ -77,24 +74,35 @@ fStatExpr :: E -> S
 fStatExpr e = (\env -> e env Value ++ [pop], [])
 
 fStatIf :: E -> S -> S -> S
-fStatIf e st sf = (\env -> c env ++ [BRF (nt env + 2)] ++ tb env ++ [BRA (nf env)] ++ fb env, [])
+fStatIf e st sf = (go, [])
   where
-    tb      = fst st
-    fb      = fst sf
-    c env'  = e env' Value
-    nt env' = codeSize $ tb env'
-    nf env' = codeSize $ fb env'
+    go env = c ++ [BRF (nt + 2)] ++ tb ++ [BRA nf] ++ fb
+      where
+        tb = fst st env
+        fb = fst sf env
+        c  = e env Value
+        nt = codeSize tb
+        nf = codeSize fb
 
 fStatWhile :: E -> S -> S
-fStatWhile e s = (\env -> [BRA (n env)] ++ b env ++ c env ++ [BRT (-(n env + k env + 2))], [])
+fStatWhile e s = (go, [])
   where
-    b      = fst s
-    c env' = e env' Value
-    n env' = codeSize $ b env'
-    k env' = codeSize $ c env'
+    go env = [BRA n] ++ b ++ c ++ [BRT (-(n + k + 2))]
+      where
+        b = fst s env
+        c = e env Value
+        n = codeSize b
+        k = codeSize c
 
 fStatReturn :: E -> S
-fStatReturn e = (\env -> e env Value ++ [STR RR], [])
+fStatReturn e = (go, [])
+  where
+    -- When return is called, we first need to close, using UNLINK, any nested local scopes we might be in, relative to the method body from which we actually have to return.
+    -- Therefore after storing the return value, we need an UNLINK for every nested local scope + 1 for the method body itself.
+    -- We also need the number of parameters to appropriately adjust the SP so that the method parameters on stack are thrown away. 
+    go env = let (localScopes, methodScope : _) = span (\s -> scopeType s /= Method) env
+                 nParam = M.size $ M.filter (< 0) (scopeContent methodScope) -- method params have a negative adress w.r.t. the MP
+              in e env Value ++ [STR RR] ++ replicate (length localScopes + 1) UNLINK ++ returnFromMethod nParam
 
 fStatBlock :: [S] -> S
 fStatBlock ts = (go, [])
@@ -103,11 +111,12 @@ fStatBlock ts = (go, [])
                  initLocalScope = [LINK (length is)] -- let MP point to address of previous scope, reserve space for local vars
                  returnToPrevScope = [UNLINK]
                  localScopeContent = M.fromList $ zip is [1..(length is)] -- start allocating adresses for local vars from 1, since 0 is always the address of the previous scope
+                 Scope{scopeType, scopeContent} = head env
                  -- Statblock creates a new local scope;
-                 -- however, if we're in a method body, we've already been supplied a partial local scope with space for the method parameters in fMembMeth.
+                 -- however, if we're in a method body, we've already been supplied a partial local scope with the method parameters from fMembMeth.
                  -- So if that's the case, we need to amend the first local scope in env, not create a new one
-                 newEnv = case scopeType (head env) of
-                            OnlyMethodParams -> Scope Normal (M.union (scopeContent (head env)) localScopeContent) : tail env
+                 newEnv = case scopeType of
+                            OnlyMethodParams -> Scope Method (M.union scopeContent localScopeContent) : tail env
                             _                -> Scope Normal localScopeContent : env
               in initLocalScope ++ concatMap ($ newEnv) fs ++ returnToPrevScope
 
@@ -126,10 +135,10 @@ fExprVar x (s:ss) va = maybe (LDL 0 : loadFromPrevScopes ss) -- for first scope,
       Value   ->  [LDL  loc]
       Address ->  [LDLA loc]
 
-    -- we always start this code block with SP pointing to the address of the scope previous to the one we just checked
-    -- check if var is in said previous scope, else load address of scope before (which sits on place 0 of previous scope), and try again
+    -- We always start this code block with SP pointing to the address of the scope previous to the one we just checked.
+    -- Check if var is in said previous scope, else load address of scope before (which sits on place 0 of previous scope), and try again
     loadFromPrevScopes :: Env -> Code
-    loadFromPrevScopes []       = error ("Compile error:\nReference to undefined variable: " ++ x)
+    loadFromPrevScopes []       = error ("Runtime error:\nReference to undefined variable: " ++ x ++ "\nPlease make sure to run the scope check before generating code.")
     loadFromPrevScopes (ps:pss) = maybe (LDA 0 : loadFromPrevScopes pss)
                                         loadValueOrAddress'
                                         (M.lookup x (scopeContent ps))
@@ -155,8 +164,12 @@ fExprOp op    e1 e2 env va = e1 env Value ++ e2 env Value ++ [
   ]
 
 fExprMeth :: Ident -> [E] -> E
-fExprMeth "print" es env va = intercalate [TRAP 0] (map (\e -> e env Value) es) ++ [TRAP 0]
+fExprMeth "print" es env va = intercalate [LDS 0, TRAP 0] (map (\e -> e env Value) es) ++ [LDS 0, TRAP 0] -- TRAP consumes its argument on the stack, so we need an extra LDS 0
 fExprMeth i es env va = concatMap (\e -> e env Value) es ++ [Bsr i, LDR RR]
+
+
+returnFromMethod :: Int -> Code
+returnFromMethod nParam = [STS (-nParam), AJS (-(nParam - 1)), RET]
 
 -- | Whether we are computing the value of a variable, or a pointer to it
 data ValueOrAddress = Value | Address

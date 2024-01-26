@@ -3,7 +3,6 @@
 
 module CSharp.AbstractSyntax where
 
-
 type ClassName = String -- Class names
 type Ident = String     -- Variable names
 
@@ -58,4 +57,9 @@ data Type = TyBool | TyInt
 data RetType
   = TyVoid      -- "void"
   | NV Type     -- "not void"
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord)
+
+instance Show RetType where 
+  show TyVoid      = "void"
+  show (NV TyBool) = "bool"
+  show (NV TyInt)  = "int"

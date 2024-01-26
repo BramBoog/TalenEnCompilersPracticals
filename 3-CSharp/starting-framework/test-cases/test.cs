@@ -1,11 +1,14 @@
 class Test {
-    int d(int a, int b){
-        return a + b;
-        print(a + b);
+    int d(int x){
+        return x + 1;
     }
 
     void main()
     {
-        d(1,2);
+        int a;
+        for (int i, i = 0; i < 2; i = i + 1) {
+            a = a + d(i);
+        }
+        print(a);
 	}
 }
