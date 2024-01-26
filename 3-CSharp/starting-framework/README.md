@@ -1,4 +1,9 @@
 # Notes by students
+# Student info
+Submitted by:
+- Bram Boogaarts, 2600617, b.m.boogaarts@students.uu.nl
+- Annemae van de Hoef, 5048184, a.b.a.vandehoef@students.uu.nl
+
 ## Documentation on compiler errors
 ### Scope checking
 In this implementation, we consider scope-checking by giving an error when a variable is called but not declared, as was asked by exercise 11. For example, when an undeclared variable 'c' is called, the following error is given:

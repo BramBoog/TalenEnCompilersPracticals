@@ -1,9 +1,9 @@
 {-
 Submitted by:
-Bram Boogaarts, 2600617
-Annemae van de Hoef, 5048184
+Bram Boogaarts, 2600617, b.bm.boogaarts@students.uu.nl
+Annemae van de Hoef, 5048184, a.b.a.vandehoef@students.uu.nl
 -}
-
+ 
 module Main where
 
 import CSharp.Algebra
